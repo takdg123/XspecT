@@ -118,7 +118,7 @@ Real calcCutoffPowerLaw(const RealArray& energyArray, const Real& photIdx, const
      while ( i <= nBins ) {
        x = energyArray[i]/cutoff;
        Real highIntegral = incGamma(a,x);
-       fluxArray[i-1] = multiplier*(lowIntegral - highIntegral);
+       fluxArray[i-1] = multiplier*(lowIntegral - highIntegral)*pow(100, -photIdx);
        lowIntegral = highIntegral;
        i++;
      }
