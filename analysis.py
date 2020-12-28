@@ -60,25 +60,7 @@ class Analysis(EventInfo):
         if "RA" in keys:            self.refRa = config['RA']
         if "DEC" in keys:           self.refDec = config['DEC']
         if "usedGBM" in keys:       self.usedGBM = config['usedGBM']
-
-        self.time_intervals = []
-        if "TimeInterval" in keys: 
-            if np.size(config["TimeInterval"], axis=1) == 2:
-                self.time_intervals = config["TimeInterval"]
-        if "TimeEdge" in keys:
-            for i in range(len(config["TimeEdge"])-1):
-                self.time_intervals.append([config["TimeEdge"][i], config["TimeEdge"][i+1]])
-        if "TimeStart" in keys and "TimeEnd" in keys:
-            for s, e in zip(config["TimeStart"], config["TimeEnd"]):
-                self.time_intervals.append([s, e])
-        if len(self.time_intervals) == 0:
-            self.time_intervals = [self.time_range]
-            self._time_start_set = [self.time_intervals[0][0] + self.trigger]
-            self._time_end_set = [self.time_intervals[0][1] + self.trigger]
-        else:
-            self._time_start_set = self.trigger+np.asarray(self.time_intervals)[:,0]
-            self._time_end_set = self.trigger+np.asarray(self.time_intervals)[:,1]
-        
+    
         if 'redshift' in keys:      self.redshift = config['redshift']
         if 'nH' in keys:            self._nH = config['nH']
         
@@ -150,9 +132,9 @@ class Analysis(EventInfo):
         i = 0
         j = 0
         temp = []
-        for ti, te in zip(self._time_start_set, self._time_end_set):
+        for toi in self.time_intervals:
             temp.append(j)
-            temp.append("{:.2f} - {:.2f}".format(ti-self.trigger, te-self.trigger))
+            temp.append("{:.2f} - {:.2f}".format(toi[0], toi[1]))
             i+=1
             if i >4:
                 makeTtable.append(temp)
@@ -187,35 +169,35 @@ class Analysis(EventInfo):
 
         if paired:
             if np.size(m_num)>2:
-                self._m_num = np.asarray(m_num)[:,0]
-                self._ti_num = np.asarray(m_num)[:,1]
+                self._m_set = np.asarray(m_num)[:,0]
+                self._ti_set = np.asarray(m_num)[:,1]
             else:
-                self._m_num = [m_num[0]]
-                self._ti_num = [m_num[1]]
+                self._m_set = [m_num[0]]
+                self._ti_set = [m_num[1]]
 
         elif np.size(ti_num) == np.size(m_num):
             if np.size(m_num) == 1:
-                self._ti_num = [ti_num]
-                self._m_num = [m_num]
+                self._ti_set = [ti_num]
+                self._m_set = [m_num]
             else:
-                self._ti_num = ti_num
-                self._m_num = m_num
+                self._ti_set = ti_num
+                self._m_set = m_num
 
         elif ti_num == -1:
-            self._ti_num = (np.zeros(np.size(m_num)) -1).astype(int)
-            self._m_num = m_num
+            self._ti_set = (np.zeros(np.size(m_num)) -1).astype(int)
+            self._m_set = m_num
 
         elif np.size(ti_num) == 1 and np.size(m_num) != 1:
-            self._ti_num = (np.zeros(np.size(m_num)) + ti_num).astype(int)
-            self._m_num = m_num
+            self._ti_set = (np.zeros(np.size(m_num)) + ti_num).astype(int)
+            self._m_set = m_num
 
         elif np.size(ti_num) >= 1 and np.size(m_num) >= 1:
-            self._ti_num = []
-            self._m_num = []
+            self._ti_set = []
+            self._m_set = []
             for t in ti_num:
                 for m in m_num:
-                    self._ti_num.append(t)
-                    self._m_num.append(m)
+                    self._ti_set.append(t)
+                    self._m_set.append(m)
         else:
             sys.exit()
         
@@ -226,15 +208,19 @@ class Analysis(EventInfo):
             print("{:^25} | {:^15} | {:^27}".format("Model","Time Intv","Status"))
             print("-"*75)
 
-        for m_num, ti_num in zip(self._m_num, self._ti_num):
+        for m_num, ti_num in zip(self._m_set, self._ti_set):
+            self.toi = self.time_intervals[ti_num]
+            self.model = self._model_names[m_num]
+            self._m_num = m_num
+            self._ti_num = ti_num
             if self.verbose and ti_num!=-1: 
-                print("{:^25} | {:>6.2f} - {:<6.2f} | {:^27}".format(self._model_names[m_num], self._time_start_set[ti_num]-self.trigger, self._time_end_set[ti_num]-self.trigger, 'Working'), end='\r')
-            output, data_points= self.__Fitting__(m_num, ti_num, newInit, debug=debug, BAT=BAT, XRT=XRT, dataType=dataType, rspType=rspType)
+                print("{:^25} | {:>6.2f} - {:<6.2f} | {:^27}".format(self.model, self.toi[0], self.toi[1], 'Working'), end='\r')
+            output, data_points= self.__Fitting__(newInit, debug=debug, BAT=BAT, XRT=XRT, dataType=dataType, rspType=rspType)
             self.output.append(output)
             self.data_points.append(data_points)
             
             if self.verbose: 
-                print("{:^25} | {:>6.2f} - {:<6.2f} | {:^27}".format(self._model_names[m_num], self._time_start_set[ti_num]-self.trigger, self._time_end_set[ti_num]-self.trigger, 'Done'))
+                print("{:^25} | {:>6.2f} - {:<6.2f} | {:^27}".format(self.model, self.toi[0], self.toi[1], 'Done'))
         self._current_output = self.output[-1]
         self._current_data_points = self.data_points[-1]
         
@@ -243,17 +229,19 @@ class Analysis(EventInfo):
     def PrintResult(self, output_num = -1, clear=False, latex=False, norm=True, Epiv=100):
         if np.size(self.output) == 1:
             self._current_output = self.output[0]
-            self.__MakeTable__(self._ti_num[0], clear=clear, norm=norm, latex=latex, Epiv=Epiv)
+            self.__MakeTable__(clear=clear, norm=norm, latex=latex, Epiv=Epiv)
             
         elif output_num!=-1:
             self._current_output = self.output[output_num]
-            self.__MakeTable__(self._ti_num[output_num], clear=clear, norm=norm, latex=latex, Epiv=Epiv)
+            self._m_num = self._m_set[output_num]
+            self._ti_num =  self._ti_set[output_num]
+            self.__MakeTable__(clear=clear, norm=norm, latex=latex, Epiv=Epiv)
             
         else:
             self.__ClearTable__()
-            for output, ti_num in zip(self.output, self._ti_num):
+            for output, ti_num in zip(self.output, self._ti_set):
                 self._current_output = output
-                self.__MakeTable__(ti_num, clear=False, norm=norm, latex=latex, Epiv=Epiv)
+                self.__MakeTable__(clear=False, norm=norm, latex=latex, Epiv=Epiv)
    
         if latex:
             FT = Utilities.table.FitTable(self.__TableList__(latex=True), parlist=self._FparN, LaTex=latex)
@@ -265,14 +253,18 @@ class Analysis(EventInfo):
     def PrintSED(self, output_num = -1, lc_flag = False, save_flag = False, overlap=True, time_range = [], energy_range = [50, 300], verbose=False): 
         if np.size(self.output) == 1:
             self._current_output = self.output[0]
-            self.__MakeSED__(self._m_num[0], self._ti_num[0], lc_flag = lc_flag, save_flag = save_flag, time_range=time_range, energy_range=energy_range, overlap=overlap, verbose=verbose)
+            self.__MakeSED__(lc_flag = lc_flag, save_flag = save_flag, time_range=time_range, energy_range=energy_range, overlap=overlap, verbose=verbose)
         elif output_num!=-1:
             self._current_output = self.output[output_num]
-            self.__MakeSED__(self._m_num[output_num], self._ti_num[output_num], lc_flag = lc_flag, save_flag = save_flag, time_range=time_range, energy_range=energy_range, overlap=overlap, verbose=verbose)
+            self._m_num = self._m_set[output_num]
+            self._ti_num =  self._ti_set[output_num]
+            self.__MakeSED__(lc_flag = lc_flag, save_flag = save_flag, time_range=time_range, energy_range=energy_range, overlap=overlap, verbose=verbose)
         else:
-            for output, m_num, ti_num in zip(self.output, self._m_num, self._ti_num):
+            for output, m_num, ti_num in zip(self.output, self._m_set, self._ti_set):
                 self._current_output = output
-                self.__MakeSED__(m_num, ti_num, lc_flag = lc_flag, save_flag = save_flag, time_range=time_range, energy_range=energy_range, overlap=overlap, verbose=verbose)
+                self._ti_num = ti_num
+                self._m_num = m_num
+                self.__MakeSED__(lc_flag = lc_flag, save_flag = save_flag, time_range=time_range, energy_range=energy_range, overlap=overlap, verbose=verbose)
                 '''
     def printSED_tot(self, save_flag = False, verbose=False):
         fig, ax = plt.subplots(len(self.output)+1,1,figsize=(10, 7), gridspec_kw = {'height_ratios':[7]+(np.zeros(len(self.output))+1.5).tolist()}) 
@@ -283,7 +275,7 @@ class Analysis(EventInfo):
             self._current_output = self.output[i]
             emax = self.__MaxEnergy__(i)
             E = np.logspace(1, emax, 100)
-            Label = r"Episode {} ({:.1f}s - {:.1f}s): {}".format(i+1, self._time_start_set[i]-self.trigger, self._time_end_set[i]-self.trigger, self._model_names[self._m_num[i]])
+            Label = r"Episode {} ({:.1f}s - {:.1f}s): {}".format(i+1, self._time_start_set[i]-self.trigger, self._time_end_set[i]-self.trigger, self._model_names[self._m_set[i]])
             
             modelF, model_compF, modelF_lu=self.__ModelFlux__(E, butterfly=True, erg=True, verbose=verbose)
             PLT, = ax[0].loglog(E, E**2*modelF, label=Label)
@@ -363,15 +355,15 @@ class Analysis(EventInfo):
                 synF.append(totF)
                 synF_comp.append(cF)
                 k = int((k+1)*20./runs)
-                print("{:^25} | {:>6.2f} - {:<6.2f} | [{:<20}] {:.0f}%".format(self._model_names[self._m_num[i]], self._time_start_set[self._ti_num[i]]-self.trigger, self._time_end_set[self._ti_num[i]]-self.trigger, '='*k, 5*k), end='\r')
+                print("{:^25} | {:>6.2f} - {:<6.2f} | [{:<20}] {:.0f}%".format(self.model, self.toi[0], self.toi[1], '='*k, 5*k), end='\r')
             
-            print("{:^25} | {:>6.2f} - {:<6.2f} | {:^27}".format(self._model_names[self._m_num[i]], self._time_start_set[self._ti_num[i]]-self.trigger, self._time_end_set[self._ti_num[i]]-self.trigger, 'Done'))
+            print("{:^25} | {:>6.2f} - {:<6.2f} | {:^27}".format(self.model, self.toi[0], self.toi[1], 'Done'))
             print("="*75)
 
             if erg:
-                TotalF.append([synF[-1]*ergCov, np.percentile(synF,16)*ergCov, np.percentile(synF, 84)*ergCov, self._time_start_set[self._ti_num[i]]-self.trigger, self._time_end_set[self._ti_num[i]]-self.trigger])
+                TotalF.append([synF[-1]*ergCov, np.percentile(synF,16)*ergCov, np.percentile(synF, 84)*ergCov, self.toi[0], self.toi[1]])
             else:
-                TotalF.append([synF[-1], np.percentile(synF,16), np.percentile(synF, 84), self._time_start_set[self._ti_num[i]]-self.trigger, self._time_end_set[self._ti_num[i]]-self.trigger])
+                TotalF.append([synF[-1], np.percentile(synF,16), np.percentile(synF, 84), self.toi[0], self.toi[1]])
             
             CompF_temp = []
 
@@ -380,15 +372,15 @@ class Analysis(EventInfo):
                 CompF_temp = []
                 for j in range(np.size(synF_comp, axis=1)):
                     if erg:
-                        CompF_temp.append([synF_comp[:,j][-1]*ergCov, np.percentile(synF_comp[:,j],16)*ergCov, np.percentile(synF_comp[:,j], 84)*ergCov, self._time_start_set[self._ti_num[i]]-self.trigger, self._time_end_set[self._ti_num[i]]-self.trigger])
+                        CompF_temp.append([synF_comp[:,j][-1]*ergCov, np.percentile(synF_comp[:,j],16)*ergCov, np.percentile(synF_comp[:,j], 84)*ergCov, self.toi[0], self.toi[1]])
                     else:
-                        CompF_temp.append([synF_comp[:,j][-1], np.percentile(synF_comp[:,j],16), np.percentile(synF_comp[:,j], 84)*ergCov, self._time_start_set[self._ti_num[i]]-self.trigger, self._time_end_set[self._ti_num[i]]-self.trigger])
+                        CompF_temp.append([synF_comp[:,j][-1], np.percentile(synF_comp[:,j],16), np.percentile(synF_comp[:,j], 84)*ergCov, self.toi[0], self.toi[1]])
                 CompF.append(CompF_temp)
             else:
                 if erg:
-                    CompF.append([synF[-1]*ergCov, np.percentile(synF,16)*ergCov, np.percentile(synF, 84)*ergCov, self._time_start_set[self._ti_num[i]]-self.trigger, self._time_end_set[self._ti_num[i]]-self.trigger])
+                    CompF.append([synF[-1]*ergCov, np.percentile(synF,16)*ergCov, np.percentile(synF, 84)*ergCov, self.toi[0], self.toi[1]])
                 else:
-                    CompF.append([synF[-1], np.percentile(synF,16), np.percentile(synF, 84), self._time_start_set[self._ti_num[i]]-self.trigger, self._time_end_set[self._ti_num[i]]-self.trigger])
+                    CompF.append([synF[-1], np.percentile(synF,16), np.percentile(synF, 84), self.toi[0], self.toi[1]])
         
         if filename == '':
             now = datetime.now()
@@ -420,223 +412,9 @@ class Analysis(EventInfo):
         self._setP = Utilities.models.pars_xspec_st
 
         self._newP = newP
-            
-    def __PrepGBMLLE__(self, ti_num, dataType=1, rspType = True):
-
-        # Import GBM and LLE dataset
-
-        for det in self._usedData:
-
-            if det == 'LAT': break
-
-            if ti_num == -1:
-                pha_file = './{}-{}.pha'.format(self._address_Xspec, det)
-                bak_file = './{}-{}.bak'.format(self._address_Xspec, det)
-            else:
-                pha_file = './{}-{}-{}.pha'.format(self._address_Xspec, det, ti_num)
-                bak_file = './{}-{}-{}.bak'.format(self._address_Xspec, det, ti_num)
-            
-            if self._data_num == 1:
-                if dataType == 1:
-                    self._AllData(pha_file)
-                elif dataType == 2:
-                    self._AllData(pha_file+ '{1}')
-            else:
-                if dataType == 1:
-                    self._AllData('{}:{} '.format(self._data_num, self._data_num)+pha_file)
-                elif dataType== 2:
-                    self._AllData('{}:{} '.format(self._data_num, self._data_num)+pha_file+ '{1}')
-            
-            with fits.open(pha_file, mode='update') as PHA:
-                PHA['SPECTRUM'].header['POISSERR'] = True
-            
-            if det !='LLE':
-                if rspType:
-                    self._AllData(self._data_num).response = './{}-{}.rsp2'.format(self._address_Xspec, det)
-                else:
-                    self._AllData(self._data_num).response = './{}-{}.rsp'.format(self._address_Xspec, det)
-            else:
-                if rspType:
-                    self._AllData(self._data_num).response = './{}-{}.rsp2'.format(self._address_Xspec, det)
-                else:
-                    self._AllData(self._data_num).response = './{}-{}.rsp'.format(self._address_Xspec, det)
-
-            try:
-                with fits.open(bak_file, mode='update') as BAK:
-                    BAK['SPECTRUM'].header['POISSERR'] = False
-                self._AllData(self._data_num).background = './{}-{}-{}.bak'.format(self._address_Xspec, det, ti_num)
-            except:
-                self._AllData(self._data_num).background = './{}-{}.bak'.format(self._address_Xspec, det)
-
-            if det == 'b0' or det == 'b1': 
-                self.__IgnoreChan__(ti_num, det)
-                
-            elif det == 'LLE': 
-                self.__IgnoreChan__(ti_num, det)
-                
-            else: 
-                self.__IgnoreChan__(ti_num, det)
-                self._AllData(self._data_num).ignore("30.-40.")
-
-            
-            self._dof+=len(self._AllData(self._data_num).energies)
-            self._group_num.append([det, self._data_num])
-            self._data_num+=1
-            
-    
-    def __PrepLAT__(self, ti_num, dataType=1):
-        
-        # Import LAT dataset
-
-        if ti_num == -1:
-            pha_file = './{}-LAT.pha'.format(self._address_Xspec)
-            rsp_file = './{}-LAT.rsp'.format(self._address_Xspec)
-            bak_file = './{}-LAT.bak'.format(self._address_Xspec)
-        else:
-            pha_file = './{}-LAT-{}.pha'.format(self._address_Xspec, ti_num)
-            rsp_file = './{}-LAT-{}.rsp'.format(self._address_Xspec, ti_num)
-            bak_file = './{}-LAT-{}.bak'.format(self._address_Xspec, ti_num)
-            
-
-        with fits.open(pha_file, mode='update') as PHA:
-            PHA['SPECTRUM'].header['POISSERR'] = True
-
-        # Source file(Neglect background)
-        if self._data_num == 1:
-            self._AllData(pha_file)
-        else:
-            self._AllData('{}:{} '.format(self._data_num, self._data_num)+pha_file)
-
-        # Response file
-        self._AllData(self._data_num).response = rsp_file
-
-        # Background file
-        if dataType==1:
-            with fits.open(bak_file, mode='update') as BAK:
-                BAK['SPECTRUM'].header['POISSERR'] = False
-            self._AllData(self._data_num).background = bak_file
-
-        if hasattr(self, 'energy_range'):
-            energy_range = self.energy_range
-            self._AllData(self._data_num).ignore("**-{:.1f}".format(energy_range[0]))
-            self._AllData(self._data_num).ignore("{:.1f}-**".format(energy_range[1]))
-        else:
-            energy_range = [100000.,100000000.]
-
-        self._dof+=len(self._AllData(self._data_num).energies)
-        self._group_num.append(["LAT", self._data_num])
-        self._data_num+=1
-
-    def __PrepXRT__(self, ti_num):
-
-        # Import XRT dataset
-
-        os.chdir("./XRT/")
-        if ti_num == 7: txrt = 1
-        elif ti_num == 8: txrt = 2
-        elif ti_num == 9: txrt = 3
-        elif ti_num == 10: txrt = 4
-        elif ti_num == 11: txrt = 'Ma5'
-        elif ti_num == 12: txrt = '1_2'
-
-        if ti_num == 11:
-            self._AllData('{}:{} 77to180wt.pi'.format(self._data_num, self._data_num))
-        else:
-            if self._data_num == 1:
-                self._AllData('sw00883832000xwtw2po_gti{}_g0_gr1.pi'.format(txrt))
-            else:
-                self._AllData('{}:{} sw00883832000xwtw2po_gti{}_g0_gr1.pi'.format(self._data_num, self._data_num, txrt))
-
-        if hasattr(self, 'energy_range'):
-            energy_range = self.energy_range
-            self._AllData(self._data_num).ignore("**-{:.1f}".format(energy_range[0]))
-            self._AllData(self._data_num).ignore("{:.1f}-**".format(energy_range[1]))
-            #self._AllData(self._data_num).ignore("1-{} {}-{}".format(len(np.asarray(AllData(self._data_num).energies)[:,0])-sum(np.asarray(AllData(self._data_num).energies)[:,0]>energy_range[0]), sum(np.asarray(AllData(self._data_num).energies)[:,0]<energy_range[1])+1, len(np.asarray(AllData(self._data_num).energies)[:,0])))
-        else:
-            self._AllData(self._data_num).ignore("**-1.")
-            self._AllData(self._data_num).ignore("10.-**")
-
-        os.chdir("../")
-        self._dof+=len(self._AllData(self._data_num).energies)
-        self._group_num.append(["XRT", self._data_num])
-        self._data_num+=1
 
 
-    def __PrepBAT__(self, ti_num):
-
-        # Import BAT dataset
-
-        if self._data_num == 1:
-            self._AllData('./BAT/{}-{}-{}.pha'.format(self.event_name, 'BAT', ti_num))
-        else:
-            self._AllData('{}:{} ./BAT/{}-{}-{}.pha'.format(self._data_num, self._data_num,self.event_name, 'BAT', ti_num))
-        self._AllData(self._data_num).response = './BAT/{}-{}-{}.rsp'.format(self.event_name, 'BAT', ti_num)
-        
-        if hasattr(self, 'energy_range'):
-            energy_range = self.energy_range
-        else:
-            energy_range = [15.,150.]
-        self._AllData(self._data_num).ignore("**-{:.1f}".format(energy_range[0]))
-        self._AllData(self._data_num).ignore("{:.1f}-**".format(energy_range[1]))
-
-        self._dof+=len(self._AllData(self._data_num).energies)
-        self._group_num.append(["BAT", self._data_num])
-        self._data_num+=1
-    
-    def __IgnoreChan__(self, ti_num, det):
-
-        if hasattr(self, 'energy_range'):
-            if det in ['b0', 'b1']:
-                if self.energy_range[0]<250.0:
-                    energy_range =  [250.0, self.energy_range[1]]
-                else:
-                    energy_range = self.energy_range
-            elif det == 'LLE':
-                energy_range = self.energy_range
-                #energy_range = [30000.0, 100000.0]
-            else:
-                if self.energy_range[1]>900.0:
-                    energy_range = [self.energy_range[0], 900.0]
-                else:
-                    energy_range = self.energy_range
-        else:
-            if det in ['b0', 'b1']:
-                energy_range =  [260.0, 38000.0]
-            elif det == 'LLE':
-                energy_range = [30000.0, 100000.0]
-            else:
-                energy_range = [10.0, 900.0]
-
-        self._AllData(self._data_num).ignore("**-{:.1f}".format(energy_range[0]))
-        self._AllData(self._data_num).ignore("{:.1f}-**".format(energy_range[1]))
- 
-    
-    def __RearrModel__(self, m_num):
-
-        # Input: ["Model_1", "Model_2"]
-        # Output: "Model_1+Model_2"
-        
-        models = ''
-        for mn in self._modelset[m_num]:
-            models=models+'+'+mn
-        models=models[1:]
-        return models
-    
-    def __SelectedData__(self, only, BAT=False, XRT=False):
-        if only == 'LATonly': Detectors=['LAT']
-        elif only == 'GBMonly': Detectors=self.usedGBM
-        elif only == 'LLEonly': Detectors=['LLE']    
-        elif only == 'LATLLE': Detectors=['LLE','LAT']
-        elif only == 'GBMLLE': Detectors=self.usedGBM + ['LLE']  
-        elif only == 'GBMLAT': Detectors=self.usedGBM + ['LAT']  
-        elif only == 'Swiftonly': Detectors=[]
-        else: Detectors = self.usedGBM+['LLE','LAT'] 
-        if BAT : Detectors = ['BAT'] + Detectors
-        if XRT: Detectors = Detectors+['XRT']
-
-        return Detectors
-
-    def __Fitting__(self, m_num, ti_num, newInit, debug=False, BAT=False, XRT=False, dataType=1, rspType=True):    
+    def __Fitting__(self, newInit, debug=False, BAT=False, XRT=False, dataType=1, rspType=True):    
         from xspec import AllData, AllModels, Xset, Model, Fit, Plot
         
         AllData.clear()
@@ -655,19 +433,19 @@ class Analysis(EventInfo):
          
         self._usedData = self.__SelectedData__(self._only)
         
-        if self._only != 'Swiftonly': self.__PrepGBMLLE__(ti_num, dataType=dataType, rspType = rspType)
+        if self._only != 'Swiftonly': self.__PrepGBMLLE__(dataType=dataType, rspType = rspType)
 
-        if 'LAT' in self._usedData: self.__PrepLAT__(ti_num, dataType=dataType)
+        if 'LAT' in self._usedData: self.__PrepLAT__(dataType=dataType)
         
-        if BAT: self.__PrepBAT__(ti_num)
+        if BAT: self.__PrepBAT__()
 
-        if XRT: self.__PrepXRT__(ti_num)
+        if XRT: self.__PrepXRT__()
 
 
         self._usedData = self.__SelectedData__(self._only, BAT=BAT, XRT=XRT)
 
         # Set modelname
-        models = self.__RearrModel__(m_num)
+        models = self.__RearrModel__(self._m_num)
 
         if XRT: 
             models = models+'* TBabs * zTBabs'
@@ -676,12 +454,12 @@ class Analysis(EventInfo):
         if newInit and len(self._newP)>0:
             changedInitP = np.asarray(self._newP)
             if m_num in changedInitP[:,0]:
-                paramSET = changedInitP[:,1][changedInitP[:,0] == m_num][0]
+                paramSET = changedInitP[:,1][changedInitP[:,0] == self._m_num][0]
                 
             else:
-                paramSET = self._setP[m_num]
+                paramSET = self._setP[self._m_num]
         else:
-            paramSET = self._setP[m_num]
+            paramSET = self._setP[self._m_num]
 
         Mmanager=Model(models, setPars=paramSET) 
 
@@ -753,7 +531,7 @@ class Analysis(EventInfo):
                 Fit.statMethod = "cstat {}".format(int(self._data_num-1))
             else:
                 Fit.statMethod = "pgstat"
-		
+        
         Fit.nIterations = 10000
 
         Fit.perform()
@@ -780,10 +558,225 @@ class Analysis(EventInfo):
 
         Statistic = [Fit.statistic, Fit.dof, bic]
 
-        output = {"Model":self.__FitResult__(), "TimeInterval":self.time_intervals[ti_num], "Statistics":Statistic, "Covariance":Fit.covariance}
-        dataPoints = {"TimeInterval":self.time_intervals[ti_num], "PlotX":x, "PlotY":y, "PlotModel": m}
+        output = {"Model":self.__FitResult__(), "TimeInterval":self.toi, "Statistics":Statistic, "Covariance":Fit.covariance}
+        dataPoints = {"TimeInterval":self.toi, "PlotX":x, "PlotY":y, "PlotModel": m}
 
         return output, dataPoints
+            
+    def __PrepGBMLLE__(self, dataType=1, rspType = True):
+
+        # Import GBM and LLE dataset
+
+        for det in self._usedData:
+
+            if det == 'LAT': break
+
+            if self._ti_num == -1:
+                pha_file = './{}-{}-0.pha'.format(self._address_Xspec, det)
+                bak_file = './{}-{}-0.bak'.format(self._address_Xspec, det)
+            else:
+                pha_file = './{}-{}-{}.pha'.format(self._address_Xspec, det, self._ti_num)
+                bak_file = './{}-{}-{}.bak'.format(self._address_Xspec, det, self._ti_num)
+            
+            if self._data_num == 1:
+                if dataType == 1:
+                    self._AllData(pha_file)
+                elif dataType == 2:
+                    self._AllData(pha_file+ '{1}')
+            else:
+                if dataType == 1:
+                    self._AllData('{}:{} '.format(self._data_num, self._data_num)+pha_file)
+                elif dataType== 2:
+                    self._AllData('{}:{} '.format(self._data_num, self._data_num)+pha_file+ '{1}')
+            
+            with fits.open(pha_file, mode='update') as PHA:
+                PHA['SPECTRUM'].header['POISSERR'] = True
+            
+            if det !='LLE':
+                if rspType:
+                    self._AllData(self._data_num).response = './{}-{}-{}.rsp2'.format(self._address_Xspec, det, self._ti_num)
+                else:
+                    self._AllData(self._data_num).response = './{}-{}-{}.rsp'.format(self._address_Xspec, det, self._ti_num)
+            else:
+                if rspType:
+                    self._AllData(self._data_num).response = './{}-{}-{}.rsp2'.format(self._address_Xspec, det, self._ti_num)
+                else:
+                    self._AllData(self._data_num).response = './{}-{}-{}.rsp'.format(self._address_Xspec, det, self._ti_num)
+
+            try:
+                with fits.open(bak_file, mode='update') as BAK:
+                    BAK['SPECTRUM'].header['POISSERR'] = False
+                self._AllData(self._data_num).background = './{}-{}-{}.bak'.format(self._address_Xspec, det, self._ti_num)
+            except:
+                self._AllData(self._data_num).background = './{}-{}-{}.bak'.format(self._address_Xspec, det, self._ti_num)
+
+            if det == 'b0' or det == 'b1': 
+                self.__IgnoreChan__(det)
+                
+            elif det == 'LLE': 
+                self.__IgnoreChan__(det)
+                
+            else: 
+                self.__IgnoreChan__(det)
+                self._AllData(self._data_num).ignore("30.-40.")
+
+            
+            self._dof+=len(self._AllData(self._data_num).energies)
+            self._group_num.append([det, self._data_num])
+            self._data_num+=1
+            
+    
+    def __PrepLAT__(self, dataType=1):
+        
+        # Import LAT dataset
+
+        if self._ti_num == -1:
+            pha_file = './{}-LAT-0.pha'.format(self._address_Xspec)
+            rsp_file = './{}-LAT-0.rsp'.format(self._address_Xspec)
+            bak_file = './{}-LAT-0.bak'.format(self._address_Xspec)
+        else:
+            pha_file = './{}-LAT-{}.pha'.format(self._address_Xspec, self._ti_num)
+            rsp_file = './{}-LAT-{}.rsp'.format(self._address_Xspec, self._ti_num)
+            bak_file = './{}-LAT-{}.bak'.format(self._address_Xspec, self._ti_num)
+            
+
+        with fits.open(pha_file, mode='update') as PHA:
+            PHA['SPECTRUM'].header['POISSERR'] = True
+
+        # Source file(Neglect background)
+        if self._data_num == 1:
+            self._AllData(pha_file)
+        else:
+            self._AllData('{}:{} '.format(self._data_num, self._data_num)+pha_file)
+
+        # Response file
+        self._AllData(self._data_num).response = rsp_file
+
+        # Background file
+        if dataType==1:
+            with fits.open(bak_file, mode='update') as BAK:
+                BAK['SPECTRUM'].header['POISSERR'] = False
+            self._AllData(self._data_num).background = bak_file
+
+        if hasattr(self, 'energy_range'):
+            energy_range = self.energy_range
+            self._AllData(self._data_num).ignore("**-{:.1f}".format(energy_range[0]))
+            self._AllData(self._data_num).ignore("{:.1f}-**".format(energy_range[1]))
+        else:
+            energy_range = [100000.,100000000.]
+
+        self._dof+=len(self._AllData(self._data_num).energies)
+        self._group_num.append(["LAT", self._data_num])
+        self._data_num+=1
+    '''
+    def __PrepXRT__(self):
+
+        # Import XRT dataset
+
+        os.chdir("./XRT/")
+        if ti_num == 7: txrt = 1
+        elif ti_num == 8: txrt = 2
+        elif ti_num == 9: txrt = 3
+        elif ti_num == 10: txrt = 4
+        elif ti_num == 11: txrt = 'Ma5'
+        elif ti_num == 12: txrt = '1_2'
+
+        if ti_num == 11:
+            self._AllData('{}:{} 77to180wt.pi'.format(self._data_num, self._data_num))
+        else:
+            if self._data_num == 1:
+                self._AllData('sw00883832000xwtw2po_gti{}_g0_gr1.pi'.format(txrt))
+            else:
+                self._AllData('{}:{} sw00883832000xwtw2po_gti{}_g0_gr1.pi'.format(self._data_num, self._data_num, txrt))
+
+        if hasattr(self, 'energy_range'):
+            energy_range = self.energy_range
+            self._AllData(self._data_num).ignore("**-{:.1f}".format(energy_range[0]))
+            self._AllData(self._data_num).ignore("{:.1f}-**".format(energy_range[1]))
+            #self._AllData(self._data_num).ignore("1-{} {}-{}".format(len(np.asarray(AllData(self._data_num).energies)[:,0])-sum(np.asarray(AllData(self._data_num).energies)[:,0]>energy_range[0]), sum(np.asarray(AllData(self._data_num).energies)[:,0]<energy_range[1])+1, len(np.asarray(AllData(self._data_num).energies)[:,0])))
+        else:
+            self._AllData(self._data_num).ignore("**-1.")
+            self._AllData(self._data_num).ignore("10.-**")
+
+        os.chdir("../")
+        self._dof+=len(self._AllData(self._data_num).energies)
+        self._group_num.append(["XRT", self._data_num])
+        self._data_num+=1
+
+
+    def __PrepBAT__(self, ti_num):
+
+        # Import BAT dataset
+
+        if self._data_num == 1:
+            self._AllData('./BAT/{}-{}-{}.pha'.format(self.event_name, 'BAT', ti_num))
+        else:
+            self._AllData('{}:{} ./BAT/{}-{}-{}.pha'.format(self._data_num, self._data_num,self.event_name, 'BAT', ti_num))
+        self._AllData(self._data_num).response = './BAT/{}-{}-{}.rsp'.format(self.event_name, 'BAT', ti_num)
+        
+        if hasattr(self, 'energy_range'):
+            energy_range = self.energy_range
+        else:
+            energy_range = [15.,150.]
+        self._AllData(self._data_num).ignore("**-{:.1f}".format(energy_range[0]))
+        self._AllData(self._data_num).ignore("{:.1f}-**".format(energy_range[1]))
+
+        self._dof+=len(self._AllData(self._data_num).energies)
+        self._group_num.append(["BAT", self._data_num])
+        self._data_num+=1
+    '''    
+    def __IgnoreChan__(self, det):
+
+        if hasattr(self, 'energy_range'):
+            if det in ['b0', 'b1']:
+                if self.energy_range[0]<250.0:
+                    energy_range =  [250.0, self.energy_range[1]]
+                else:
+                    energy_range = self.energy_range
+            elif det == 'LLE':
+                energy_range = self.energy_range
+                #energy_range = [30000.0, 100000.0]
+            else:
+                if self.energy_range[1]>900.0:
+                    energy_range = [self.energy_range[0], 900.0]
+                else:
+                    energy_range = self.energy_range
+        else:
+            if det in ['b0', 'b1']:
+                energy_range =  [260.0, 38000.0]
+            elif det == 'LLE':
+                energy_range = [30000.0, 100000.0]
+            else:
+                energy_range = [10.0, 900.0]
+
+        self._AllData(self._data_num).ignore("**-{:.1f}".format(energy_range[0]))
+        self._AllData(self._data_num).ignore("{:.1f}-**".format(energy_range[1]))
+ 
+    
+    def __RearrModel__(self, m_num):
+
+        # Input: ["Model_1", "Model_2"]
+        # Output: "Model_1+Model_2"
+        
+        models = ''
+        for mn in self._modelset[m_num]:
+            models=models+'+'+mn
+        models=models[1:]
+        return models
+    
+    def __SelectedData__(self, only, BAT=False, XRT=False):
+        if only == 'LATonly': Detectors=['LAT']
+        elif only == 'GBMonly': Detectors=self.usedGBM
+        elif only == 'LLEonly': Detectors=['LLE']    
+        elif only == 'LATLLE': Detectors=['LLE','LAT']
+        elif only == 'GBMLLE': Detectors=self.usedGBM + ['LLE']  
+        elif only == 'GBMLAT': Detectors=self.usedGBM + ['LAT']  
+        elif only == 'Swiftonly': Detectors=[]
+        else: Detectors = self.usedGBM+['LLE','LAT'] 
+        if BAT : Detectors = ['BAT'] + Detectors
+        if XRT: Detectors = Detectors+['XRT']
+
+        return Detectors
 
     def __PlotSetting__(self, debug = False, BAT=False, XRT=False):
 
@@ -838,9 +831,7 @@ class Analysis(EventInfo):
         
         return x, y, m
     
-    def __MakeTable__(self, ti_num, clear=False, norm=True, latex=False, Epiv=100):
-        tS = self._time_start_set[ti_num]-self.trigger
-        tE = self._time_end_set[ti_num]-self.trigger
+    def __MakeTable__(self, clear=False, norm=True, latex=False, Epiv=100):
         multi = False
 
         if clear or not(hasattr(self, "_Ftable")):
@@ -891,9 +882,9 @@ class Analysis(EventInfo):
                 self._Ftable['T_num'].append('')
             else:
                 self._Ftable['Model'].append(modelName)
-                self._Ftable['Time'].append(["{:.2f}".format(tS), "{:.2f}".format(tE)])
+                self._Ftable['Time'].append(["{:.2f}".format(self.toi[0]), "{:.2f}".format(self.toi[1])])
                 self._Ftable['Stats'].append(["{:.1f}".format(self._current_output["Statistics"][0]), self._current_output["Statistics"][1], "{:.1f}".format(self._current_output["Statistics"][2])])
-                self._Ftable['T_num'].append(ti_num)
+                self._Ftable['T_num'].append(self._ti_num)
 
             multi = True
 
@@ -929,14 +920,14 @@ class Analysis(EventInfo):
         return [np.percentile(Ep2, 50), np.percentile(Ep2, 84),np.percentile(Ep2, 16)]
 
 
-    def __MakeSED__(self, m_num, ti_num, lc_flag = False, save_flag = False, time_range = [], energy_range = [50, 300], overlap=True, verbose=False):
+    def __MakeSED__(self, lc_flag = False, save_flag = False, time_range = [], energy_range = [50, 300], overlap=True, verbose=False):
         if not(lc_flag):
             fig = plt.figure(figsize=(5,6))
             gs = plt.GridSpec(2, 1, height_ratios=[3, 12])
             gs.update(hspace=0.32)
             topax = fig.add_subplot(gs[0])
 
-            topax = Utilities.lightcurve.LightCurve(self, ax = topax, toi=[self.time_intervals[ti_num][0], self.time_intervals[ti_num][1]])
+            topax = Utilities.lightcurve.LightCurve(self, ax = topax, toi=self.toi+self.trigger)
             
             gs_base = gridspec.GridSpecFromSubplotSpec(2, 1, subplot_spec=gs[1], height_ratios=[9, 2], hspace=0.05)
             ax = [fig.add_subplot(gs_base[0,:]),fig.add_subplot(gs_base[1,:])]
@@ -970,11 +961,11 @@ class Analysis(EventInfo):
 
         try:
             modelF, model_compF, etc = self.__ModelFlux__(E, verbose=verbose)
-            ax[0].loglog(E, E**2*modelF, color='k', label=Utilities.models.model_list[m_num])
+            ax[0].loglog(E, E**2*modelF, color='k', label=Utilities.models.model_list[self._m_num])
             for modelF in model_compF:
                 ax[0].loglog(E, E**2*modelF, color='k', ls=":", lw=0.7, )
         except:
-            ax[0].loglog(x[:,0], m, color='k', label=Utilities.models.model_list[m_num])
+            ax[0].loglog(x[:,0], m, color='k', label=Utilities.models.model_list[self._m_num])
         
         if 'XRT' in self._usedData:
             ax[0].set_xlim(0.8, 1e8)
@@ -999,7 +990,7 @@ class Analysis(EventInfo):
         ax[0].legend()
 
         if save_flag:
-            plt.save_flag("{}-{}.pdf".format(ti_num,m_num), bbox_inches="tight")
+            plt.save_flag("{}-{}.pdf".format(self._ti_num,self._m_num), bbox_inches="tight")
         
         plt.show(block=False)
 

@@ -20,20 +20,33 @@ from ..info import EventInfo
 class PrepLAT(EventInfo):
     
     
-    def __init__(self, grb, tRan = [None, None], eRan = [100, 10000], zmax = 105, rad = 12, verbose=False, **kwargs):
+    def __init__(self, grb, tRan = [None, None], eRan = [100, 10000], zmax = 105, rad = 12, verbose=False, forcedGen=False, **kwargs):
         
         super().__init__(grb, tRan = tRan, eRan=eRan, **kwargs)
 
         self._zmax = zmax
         self._rad = rad
         self.verbose=verbose
+        self.forcedGen = forcedGen
 
         self.Preparation()
         
     def Preparation(self):
         self.__Files__()
+        file_flag = os.path.isfile('./{}-LAT-{}.bak'.format(self._address_Xspec, self._ti_num))
+
+        if not(self.forcedGen) and file_flag:
+            print("LAT files (name: {}, time interval: {:.3f}-{:.3f}) already exist.".format(self.full_name, self.toi[0], self.toi[1]))
+            return
+
         self.__FilterData__()
-        self.__MaketimeData__()
+        try:
+            self.__MaketimeData__()
+        except:
+            self._zmax = 110
+            self._rad = 8
+            self.__FilterData__()
+            self.__MaketimeData__()
         self.__CheckFile__()
         self.__EvtbinData__()
         self.__RspgenData__()
@@ -48,7 +61,7 @@ class PrepLAT(EventInfo):
         os.system("ls ./{}/LAT/*EV* > ./{}/LAT/{}-events.txt".format(self.full_name, self.full_name,self.event_name))
 
     def __CheckFile__(self):
-        Nevts = len(fits.open("./090720710/LAT/090720-mktime.fits")[1].data)
+        Nevts = len(fits.open("./{}-mktime.fits".format(self._address_LAT))[1].data)
         if Nevts == 0:
             if self._zmax!=110 and self._rad!=8:
                 if self.verbose:
@@ -74,8 +87,8 @@ class PrepLAT(EventInfo):
             filter['tmax'] = self.trigger+tRan[1]
             filter['outfile'] = './{}-filtered_temp.fits'.format(self._address_LAT)
         else:
-            filter['tmin'] = self._time_start+self.trigger
-            filter['tmax'] = self._time_end+self.trigger
+            filter['tmin'] = self.toi[0]+self.trigger
+            filter['tmax'] = self.toi[1]+self.trigger
             filter['outfile'] = './{}-filtered.fits'.format(self._address_LAT)
         filter['emin'] = self._energy_start
         filter['emax'] = self._energy_end
@@ -103,16 +116,16 @@ class PrepLAT(EventInfo):
     def __EvtbinData__(self):
         evtbin['evfile'] = './{}-mktime.fits'.format(self._address_LAT)
         evtbin['scfile'] = './{}-SC00.fits'.format(self._address_LAT)
-        evtbin['outfile'] = './{}-LAT.pha'.format(self._address_Xspec)
+        evtbin['outfile'] = './{}-LAT-{}.pha'.format(self._address_Xspec, self._ti_num)
         evtbin['algorithm'] = 'PHA1'
         evtbin['ebinalg'] = 'LOG'
         evtbin['emin'] = self._energy_start
         evtbin['emax'] = self._energy_end
         evtbin['enumbins'] = 10
         evtbin['tbinalg'] = 'LIN'
-        evtbin['tstart'] = self._time_start+self.trigger
-        evtbin['tstop'] = self._time_end+self.trigger
-        evtbin['dtime'] = self._time_end-self._time_start
+        evtbin['tstart'] = self.toi[0]+self.trigger
+        evtbin['tstop'] = self.toi[1]+self.trigger
+        evtbin['dtime'] = self.toi[1]-self.toi[0]
         evtbin['chatter'] = int(self.verbose)
         evtbin['snratio'] = 0.
         evtbin['lcemin'] = 0.
@@ -127,9 +140,9 @@ class PrepLAT(EventInfo):
         
     def __RspgenData__(self):
         rspgen['respalg'] = 'PS'
-        rspgen['specfile'] = './{}-LAT.pha'.format(self._address_Xspec)
+        rspgen['specfile'] = './{}-LAT-{}.pha'.format(self._address_Xspec, self._ti_num)
         rspgen['scfile'] = './{}-SC00.fits'.format(self._address_LAT)
-        rspgen['outfile'] = './{}-LAT.rsp'.format(self._address_Xspec)
+        rspgen['outfile'] = './{}-LAT-{}.rsp'.format(self._address_Xspec, self._ti_num)
         rspgen['thetacut'] = 90
         rspgen['irfs'] = self._irf_class
         rspgen['emin'] = self._energy_start
@@ -182,9 +195,9 @@ class PrepLAT(EventInfo):
 
     def __BkgData__(self):
         self.__DiffRespsData__()
-        gtbkg['phafile'] = './{}-LAT.pha'.format(self._address_Xspec)
+        gtbkg['phafile'] = './{}-LAT-{}.pha'.format(self._address_Xspec, self._ti_num)
         gtbkg['scfile'] = './{}-SC00.fits'.format(self._address_LAT)
-        gtbkg['outfile'] = './{}-LAT.bak'.format(self._address_Xspec)
+        gtbkg['outfile'] = './{}-LAT-{}.bak'.format(self._address_Xspec, self._ti_num)
         gtbkg['irfs'] = self._irf_class
         gtbkg['expcube'] = './{}-ltcube.fits'.format(self._address_LAT)
         gtbkg['expmap'] = './{}-expmap.fits'.format(self._address_LAT)

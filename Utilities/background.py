@@ -1,6 +1,6 @@
 import numpy as np
 
-def PolyFit(data, tbin_size=0.064, t1=0, t2=100):
+def BackgroundFit(data, tbin_size=0.064, t1=0, t2=100):
     bk1 = np.histogram(data[(data<t1) + (data>t2)], bins=np.arange(min(data), max(data), step=tbin_size))
     bk2 = np.histogram(data[(data<t1) + (data>t2)], bins=np.arange(min(data), max(data), step=tbin_size))
     bk = np.asarray((bk1[0].tolist()+bk2[0].tolist()))

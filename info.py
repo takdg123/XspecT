@@ -1,4 +1,5 @@
 import os
+import numpy as np
 from astropy.io import fits
 from XspecT.Preparation.downinfo import DownloadGBMcat
 
@@ -31,9 +32,9 @@ class EventInfo(object):
         self._info_num = self.event_info[1].data["TRIGGER_NAME"]=='BN'+self.full_name
         self._LAT_info_num = self.event_info_LAT[1].data["GRBNAME"]==self.full_name
         
-        self._address_GBM = self.full_name+'/GBM/'+self.event_name
-        self._address_Xspec = self.full_name+'/Xspec/'+self.event_name
         self._address_LAT = self.full_name+'/LAT/'+self.event_name
+        self._address_Xspec = self.full_name+'/Xspec/'+self.event_name
+
         
         if sum(self._info_num) == 1:
             detNm = self.event_info[1].data["SCAT_DETECTOR_MASK"][self._info_num]
@@ -102,41 +103,61 @@ class EventInfo(object):
             self.refDec = self.event_info_LAT[1].data["DEC"][self._LAT_info_num][0]
 
         if tRan[0] !=None:
-            if tRan[0] == "T0": self._time_start = 0.
-            elif tRan[0] == "t05": self._time_start = self.t05
-            elif tRan[0] == "T95": self._time_start = self.t95
+            if tRan[0] == "T0": _time_start = 0.
+            elif tRan[0] == "T05": _time_start = self.t05
+            elif tRan[0] == "T95": _time_start = self.t95
             elif tRan[0] == "LATT0" and sum(self._LAT_info_num) == 1:
-                self._time_start = self.event_info_LAT[1].data["TL0"][self._LAT_info_num][0]         
+                _time_start = self.event_info_LAT[1].data["TL0"][self._LAT_info_num][0]         
             elif tRan[0] == "LATT1" and sum(self._LAT_info_num) == 1:
-                self._time_start = self.event_info_LAT[1].data["TL100"][self._LAT_info_num][0]
+                _time_start = self.event_info_LAT[1].data["TL100"][self._LAT_info_num][0]
             elif isinstance(tRan[0], int) or isinstance(tRan[0], float):
-                self._time_start = tRan[0]
+                _time_start = tRan[0]
             else:
-                raise("Check your start time (tRan[0])")
+                raise("Check your start time (tRan[0]): e.g., T05, T95, LATT0, LATT1, float, int, ...")
         else:
-            self._time_start = self.t05
+            _time_start = self.t05
 
 
         if tRan[1] !=None:
-            if tRan[1] == "T0": self._time_end = 0.
-            elif tRan[1] == "t05": self._time_end = self.t05
-            elif tRan[1] == "T95": self._time_end = self.event_info_LAT[1].data["GBMT95"][self._LAT_info_num][0]         
+            if tRan[1] == "T0": _time_end = 0.
+            elif tRan[1] == "T05": _time_end = self.t05
+            elif tRan[1] == "T95": _time_end = self.event_info_LAT[1].data["GBMT95"][self._LAT_info_num][0]         
             elif tRan[1] == "LATT0" and sum(self._LAT_info_num) == 1:
-                self._time_end = self.event_info_LAT[1].data["TL0"][self._LAT_info_num][0]         
+                _time_end = self.event_info_LAT[1].data["TL0"][self._LAT_info_num][0]         
             elif tRan[1] == "LATT1" and sum(self._LAT_info_num) == 1:
-                self._time_end = self.event_info_LAT[1].data["TL100"][self._LAT_info_num][0]
+                _time_end = self.event_info_LAT[1].data["TL100"][self._LAT_info_num][0]
             elif isinstance(tRan[1], int) or isinstance(tRan[1], float):
-                self._time_end = tRan[1]
+                _time_end = tRan[1]
             else:
-                raise("Check your end time (tRan[1])")
+                raise("Check your end time (tRan[1]): e.g., T05, T95, LATT0, LATT1, float, int, ...")
         else:
-            self._time_end = self.t95
+            _time_end = self.t95
 
-        if self._time_end < self._time_start:
-            self._time_start, self._time_end = self._time_end, self._time_start 
+        if _time_end < _time_start:
+            _time_start, _time_end = _time_end, _time_start 
 
-        self.time_range = [self._time_start, self._time_end]
-        
+        self.toi = [_time_start, _time_end, self.trigger]
+        if not(os.path.isfile(self._address_Xspec+"-ti.npy")):
+            self.time_intervals = np.asarray([self.toi])
+            self._ti_num = 0
+            np.save("./"+self._address_Xspec+"-ti", self.time_intervals)
+        else:
+            self.time_intervals = np.load("./"+self._address_Xspec+"-ti.npy")
+
+            if self.toi in self.time_intervals:
+                for i in range(len(self.time_intervals)):
+                    if sum(self.toi == self.time_intervals[i]) == 3:
+                        self._ti_num = i
+            else:
+                self.time_intervals = self.time_intervals.tolist()
+                self.time_intervals.append(self.toi)
+                np.save("./"+self._address_Xspec+"-ti", self.time_intervals)
+                self.time_intervals = np.asarray(time_intervals)
+                self._ti_num = len(self.time_intervals)-1                
+
+        self._m_num = 0
+        self.model=""
+
         self._energy_start = eRan[0]
         self._energy_end = eRan[1]
         

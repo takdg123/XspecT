@@ -3,7 +3,7 @@ import os
 import matplotlib.pyplot as plt
 from astropy.io import fits
 
-from .background import PolyFit
+from .background import BackgroundFit
 from . import utils 
 
 def GBMlcData(info, eCut=[50, 300]):
@@ -53,7 +53,7 @@ def LightCurve(info, ax=None, toi = [None, None], eRan = [50, 300], tb=0.064, ts
 
     rawData = GBMlcData(info, eCut=eRan)[0]
 
-    bk, err = PolyFit(rawData, t1=-10, t2=info.t95+50)
+    bk, err = BackgroundFit(rawData, t1=-10, t2=info.t95+50)
     lcEdge = np.arange(-info.t90, info.t90*2, step=ts)
     cnts, t = np.histogram(rawData, bins=lcEdge)
     ts = np.asarray(t[1:]-t[:-1])
