@@ -11,21 +11,18 @@ from GtApp import GtApp
 bindef = GtApp('gtbindef','Likelihood')
 gtbkg = GtApp('gtbkg')
 gtsrcprob = GtApp('gtsrcprob')
-gtltcube = GtApp('gtltcube')
 gtlike = GtApp('gtlike')
 
 from .make4FGLxml import *
-from XspecT.info import EventInfo
+from ..info import EventInfo
 
 
 class PrepLAT(EventInfo):
     
     
-    def __init__(self, grb, tRan = [None, None], zmax = 105, rad = 12, verbose=False, **kwargs):
+    def __init__(self, grb, tRan = [None, None], eRan = [100, 10000], zmax = 105, rad = 12, verbose=False, **kwargs):
         
-        if hasattr(grb, 'dtype'):
-            grb = grb.decode('UTF-8')
-        super().__init__(grb, tRan = tRan, **kwargs)
+        super().__init__(grb, tRan = tRan, eRan=eRan, **kwargs)
 
         self._zmax = zmax
         self._rad = rad
@@ -34,25 +31,23 @@ class PrepLAT(EventInfo):
         self.Preparation()
         
     def Preparation(self):
-        self.__EVSCfiles__()
-        self.__filter_data__()
-        self.__maketime_data__()
-        self.__check_file__()
-        self.__evtbin_LAT__()
-        self.__rspgen_data__()
-        #self.__expCube_data__()
-        self.__ltCube_data__()
-        self.__generateXML__()
-        self.__expMap_data__()
-        
-        self.__srcProb__()
-        self.__bkGenLAT__()
+        self.__Files__()
+        self.__FilterData__()
+        self.__MaketimeData__()
+        self.__CheckFile__()
+        self.__EvtbinData__()
+        self.__RspgenData__()
+        self.__ExpCubeData__()
+        self.__GenerateXML__()
+        self.__ExpMapData__()
+        self.__SrcProb__()
+        self.__BkgData__()
         
         
-    def __EVSCfiles__(self):
-        os.system("ls ./{}/LAT/*EV* > ./{}/LAT/{}-events.txt".format(self.fullname, self.fullname,self.GRB_name))
+    def __Files__(self):
+        os.system("ls ./{}/LAT/*EV* > ./{}/LAT/{}-events.txt".format(self.full_name, self.full_name,self.event_name))
 
-    def __check_file__(self):
+    def __CheckFile__(self):
         Nevts = len(fits.open("./090720710/LAT/090720-mktime.fits")[1].data)
         if Nevts == 0:
             if self._zmax!=110 and self._rad!=8:
@@ -61,36 +56,36 @@ class PrepLAT(EventInfo):
                     print("We increase the selection; i.e., a losse cut, zmax = 110 and roi = 8.")
                 self._zmax = 110
                 self._rad = 8
-                self.__filter_data__()
-                self.__maketime_data__()
+                self.__FilterData__()
+                self.__MaketimeData__()
             else:
                 if self.verbose:
                     print("With the loose selection, there is no LAT event.")
                     print("We may need a caution on analyzing this burst.")
 
 
-    def __filter_data__(self, tRan = None, srcProb=False): 
+    def __FilterData__(self, tRan = None, srcProb=False): 
         filter['infile'] = './{}-events.txt'.format(self._address_LAT)
-        filter['ra'] = self._refRa
-        filter['dec'] = self._refDec
+        filter['ra'] = self.refRa
+        filter['dec'] = self.refDec
         filter['rad'] = self._rad
         if srcProb and tRan!=None:
-            filter['tmin'] = self.Trigger+tRan[0]
-            filter['tmax'] = self.Trigger+tRan[1]
+            filter['tmin'] = self.trigger+tRan[0]
+            filter['tmax'] = self.trigger+tRan[1]
             filter['outfile'] = './{}-filtered_temp.fits'.format(self._address_LAT)
         else:
-            filter['tmin'] = self._tStart+self.Trigger
-            filter['tmax'] = self._tEnd+self.Trigger
+            filter['tmin'] = self._time_start+self.trigger
+            filter['tmax'] = self._time_end+self.trigger
             filter['outfile'] = './{}-filtered.fits'.format(self._address_LAT)
-        filter['emin'] = self._eStart
-        filter['emax'] = self._eEnd
+        filter['emin'] = self._energy_start
+        filter['emax'] = self._energy_end
         filter['zmax'] = self._zmax
-        filter['evclass'] = self._eC
+        filter['evclass'] = self._evt_class
         filter['evtype'] = 3
         filter['chatter'] = int(self.verbose)
         filter.run(print_command=self.verbose)
 
-    def __maketime_data__(self, srcProb = False):
+    def __MaketimeData__(self, srcProb = False):
         if srcProb:
             maketime['evfile'] = './{}-filtered_temp.fits'.format(self._address_LAT)
             maketime['outfile'] = './{}-mktime_temp.fits'.format(self._address_LAT)
@@ -101,25 +96,23 @@ class PrepLAT(EventInfo):
         maketime['filter'] = '(DATA_QUAL>0||DATA_QUAL==-1||DATA_QUAL==1)&&(LAT_CONFIG==1)'
         maketime['apply_filter'] = 'yes'
         maketime['roicut'] = 'yes'
-        #maketime['tstart'] = self._tStart+self.Trigger
-        #maketime['tstop'] = self._tEnd+self.Trigger
         maketime['chatter'] = int(self.verbose)
         maketime.run(print_command=self.verbose)
         
 
-    def __evtbin_LAT__(self):
+    def __EvtbinData__(self):
         evtbin['evfile'] = './{}-mktime.fits'.format(self._address_LAT)
         evtbin['scfile'] = './{}-SC00.fits'.format(self._address_LAT)
         evtbin['outfile'] = './{}-LAT.pha'.format(self._address_Xspec)
         evtbin['algorithm'] = 'PHA1'
         evtbin['ebinalg'] = 'LOG'
-        evtbin['emin'] = self._eStart
-        evtbin['emax'] = self._eEnd
+        evtbin['emin'] = self._energy_start
+        evtbin['emax'] = self._energy_end
         evtbin['enumbins'] = 10
         evtbin['tbinalg'] = 'LIN'
-        evtbin['tstart'] = self._tStart+self.Trigger
-        evtbin['tstop'] = self._tEnd+self.Trigger
-        evtbin['dtime'] = self._tEnd-self._tStart
+        evtbin['tstart'] = self._time_start+self.trigger
+        evtbin['tstop'] = self._time_end+self.trigger
+        evtbin['dtime'] = self._time_end-self._time_start
         evtbin['chatter'] = int(self.verbose)
         evtbin['snratio'] = 0.
         evtbin['lcemin'] = 0.
@@ -128,24 +121,24 @@ class PrepLAT(EventInfo):
         evtbin['nypix'] = 240
         evtbin['binsz'] = 0.1
         evtbin['coordsys'] = 'CEL'
-        evtbin['xref'] = self._refRa
-        evtbin['yref'] = self._refDec
+        evtbin['xref'] = self.refRa
+        evtbin['yref'] = self.refDec
         evtbin.run(print_command=self.verbose)
         
-    def __rspgen_data__(self):
+    def __RspgenData__(self):
         rspgen['respalg'] = 'PS'
         rspgen['specfile'] = './{}-LAT.pha'.format(self._address_Xspec)
         rspgen['scfile'] = './{}-SC00.fits'.format(self._address_LAT)
         rspgen['outfile'] = './{}-LAT.rsp'.format(self._address_Xspec)
         rspgen['thetacut'] = 90
-        rspgen['irfs'] = self._irfC
-        rspgen['emin'] = self._eStart
-        rspgen['emax'] = self._eEnd
+        rspgen['irfs'] = self._irf_class
+        rspgen['emin'] = self._energy_start
+        rspgen['emax'] = self._energy_end
         rspgen['enumbins'] = 10
         rspgen['chatter'] = int(self.verbose)
         rspgen.run(print_command=self.verbose) 
             
-    def __expCube_data__(self):
+    def __ExpCubeData__(self):
         expCube['evfile'] = './{}-mktime.fits'.format(self._address_LAT)
         expCube['outfile'] = './{}-ltcube.fits'.format(self._address_LAT)
         expCube['scfile'] = './{}-SC00.fits'.format(self._address_LAT)
@@ -154,25 +147,13 @@ class PrepLAT(EventInfo):
         expCube['zmax'] = self._zmax
         expCube['chatter'] = int(self.verbose)
         expCube.run(print_command=self.verbose)
-    
-    def __ltCube_data__(self):
-        gtltcube['evfile'] = './{}-mktime.fits'.format(self._address_LAT)
-        gtltcube['outfile'] = './{}-ltcube.fits'.format(self._address_LAT)
-        gtltcube['scfile'] = './{}-SC00.fits'.format(self._address_LAT)
-        gtltcube['dcostheta'] = 0.025
-        gtltcube['binsz'] = 1
-        gtltcube['tmin'] = self._tStart+self.Trigger
-        gtltcube['tmax'] = self._tEnd+self.Trigger
-        gtltcube['zmax'] = self._zmax
-        gtltcube['chatter'] = int(self.verbose)
-        gtltcube.run(print_command=self.verbose)
-
-    def __expMap_data__(self):
+ 
+    def __ExpMapData__(self):
         expMap['evfile'] = './{}-mktime.fits'.format(self._address_LAT)
         expMap['outfile'] = './{}-expmap.fits'.format(self._address_LAT)
         expMap['scfile'] = './{}-SC00.fits'.format(self._address_LAT)
         expMap['expcube'] = './{}-ltcube.fits'.format(self._address_LAT)
-        expMap['irfs'] = self._irfC
+        expMap['irfs'] = self._irf_class
         expMap['srcrad'] = 30
         expMap['nlong'] = 120
         expMap['nlat'] = 120
@@ -180,31 +161,31 @@ class PrepLAT(EventInfo):
         expMap['chatter'] = int(self.verbose)
         expMap.run(print_command=self.verbose)
 
-    def __diffResps_data__(self, srcProb=False):
+    def __DiffRespsData__(self, srcProb=False):
         if srcProb:
             diffResps['evfile'] = './{}-mktime_temp.fits'.format(self._address_LAT)
         else:
             diffResps['evfile'] = './{}-mktime.fits'.format(self._address_LAT)
         diffResps['scfile'] = './{}-SC00.fits'.format(self._address_LAT)
         diffResps['srcmdl'] = './{}-model.xml'.format(self._address_LAT)
-        diffResps['irfs'] = self._irfC
+        diffResps['irfs'] = self._irf_class
         diffResps['evclass'] = 16
         diffResps['evtype'] = 3
         diffResps['chatter'] = int(self.verbose)
         diffResps.run(print_command=self.verbose)
 
-    def __generateXML__(self):
+    def __GenerateXML__(self):
         FERMI_DIR = os.environ.get('FERMI_DIR')
-        SCRIPT_DIR = os.environ.get('SCRIPT_DIR')
+        SCRIPT_DIR = os.environ.get('XspecT')
         mymodel = srcList('{}/RefData/gll_psc_v26.fit'.format(SCRIPT_DIR), ft1='./{}-mktime.fits'.format(self._address_LAT), out='./{}-model.xml'.format(self._address_LAT))
-        mymodel.makeModel(radLim=0.001, GRB=True, GDname = "Galactic diffuse", GDfile = '{}/refdata/fermi/galdiffuse/gll_iem_v07.fits'.format(FERMI_DIR),  ISOname = "Isotropic diffuse", ISOfile = '{}/refdata/fermi/galdiffuse/iso_{}_v06.txt'.format(FERMI_DIR, self._irfC), varFree=False)
+        mymodel.makeModel(radLim=0.001, GRB=True, GDname = "Galactic diffuse", GDfile = '{}/refdata/fermi/galdiffuse/gll_iem_v07.fits'.format(FERMI_DIR),  ISOname = "Isotropic diffuse", ISOfile = '{}/refdata/fermi/galdiffuse/iso_{}_v06.txt'.format(FERMI_DIR, self._irf_class), varFree=False)
 
-    def __bkGenLAT__(self):
-        self.__diffResps_data__()
+    def __BkgData__(self):
+        self.__DiffRespsData__()
         gtbkg['phafile'] = './{}-LAT.pha'.format(self._address_Xspec)
         gtbkg['scfile'] = './{}-SC00.fits'.format(self._address_LAT)
         gtbkg['outfile'] = './{}-LAT.bak'.format(self._address_Xspec)
-        gtbkg['irfs'] = self._irfC
+        gtbkg['irfs'] = self._irf_class
         gtbkg['expcube'] = './{}-ltcube.fits'.format(self._address_LAT)
         gtbkg['expmap'] = './{}-expmap.fits'.format(self._address_LAT)
         gtbkg['srcmdl'] = './{}-model.xml'.format(self._address_LAT)
@@ -213,27 +194,27 @@ class PrepLAT(EventInfo):
         gtbkg['chatter'] = int(self.verbose)
         gtbkg.run(print_command=self.verbose) 
 
-    def __likelihood__(self):
+    def __Likelihood__(self):
         gtlike['evfile'] = './{}-mktime.fits'.format(self._address_LAT)
         gtlike['scfile'] = './{}-SC00.fits'.format(self._address_LAT)
         gtlike['expcube'] = './{}-ltcube.fits'.format(self._address_LAT)
         gtlike['expmap'] = './{}-expmap.fits'.format(self._address_LAT)
-        gtlike['irfs'] = self._irfC
+        gtlike['irfs'] = self._irf_class
         gtlike['srcmdl'] = './{}-model.xml'.format(self._address_LAT)
         gtlike['optimizer'] = "NEWMINUIT"
         gtlike['chatter'] = int(self.verbose)
         gtlike.run(print_command=self.verbose) 
 
-    def __srcProb__(self):
-        self.__filter_data__(tRan = [-100, 1000], srcProb=True)
-        self.__maketime_data__(srcProb=True)
-        self.__diffResps_data__(srcProb=True)
+    def __SrcProb__(self):
+        self.__FilterData__(tRan = [-100, 1000], srcProb=True)
+        self.__MaketimeData__(srcProb=True)
+        self.__DiffRespsData__(srcProb=True)
         
         gtsrcprob["evfile"] = './{}-mktime_temp.fits'.format(self._address_LAT)
         gtsrcprob["scfile"] = './{}-SC00.fits'.format(self._address_LAT)
         gtsrcprob["outfile"] = './{}-srcprob.fits'.format(self._address_LAT)
         gtsrcprob["srcmdl"] = './{}-model.xml'.format(self._address_LAT)
-        gtsrcprob["irfs"] = self._irfC
+        gtsrcprob["irfs"] = self._irf_class
         gtsrcprob['chatter'] = int(self.verbose)
         gtsrcprob.run(print_command=self.verbose) 
 

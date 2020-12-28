@@ -107,7 +107,7 @@ Models = {
                   {1: '1.5, 0.001, 0, 0, 5, 10', 2: '20000,0.01,10,10,1000000,1000000', 3:'1, 0.01,0.01,0.001, 10, 10'}], 
 }
 
-ModelList = list(Models.keys())
+model_list = list(Models.keys())
 
 model_xspec_st = [Models[m][0] for m in Models]
 

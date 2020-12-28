@@ -8,52 +8,42 @@ from GtBurst import html2text
 
 import re
 
-from XspecT.info import EventInfo
+from .downinfo import DownloadGBMcat
+from ..info import EventInfo
 
 class DownloadData(EventInfo):
     
     def __init__(self, grb, verbose=False, **kwargs):
-        if hasattr(grb, 'dtype'):
-            grb = grb.decode('UTF-8')
         super().__init__(grb, **kwargs)
         self.verbose=verbose
 
-    def makeDir(self):
-        os.system("mkdir {}".format(self.fullname))
-        os.system("mkdir {}/GBM".format(self.fullname))
-        os.system("mkdir {}/Xspec".format(self.fullname))
-        os.system("mkdir {}/LAT".format(self.fullname))
+    def MakeDir(self):
+        os.system("mkdir {}".format(self.full_name))
+        os.system("mkdir {}/GBM".format(self.full_name))
+        os.system("mkdir {}/Xspec".format(self.full_name))
+        os.system("mkdir {}/LAT".format(self.full_name))
     
-    def downloadAll(self, gbm=True, lle=True, lat=True, forcedDwn=False):
+    def DownloadAll(self, gbm=True, lle=False, lat=True, forcedDwn=False):
 
         self.forcedDwn=forcedDwn
         if gbm:
-            self.GBMdownload()
+            DownloadGBMcat(self.full_name, verbose=self.verbose)
+            self.DownloadGBM()
         if lle:
-            self.LLEdownload()
+            self.DownloadLLE()
         if lat:
-            self.LATdownload()
+            self.DownloadLAT()
 
-
-    def GBMdownload(self):
+    def DownloadGBM(self):
         dwDet = self.usedGBM
-        
-        if not(os.path.isfile("./{}/GBM/{}-bcat.fit".format(self.fullname,self.GRB_name))):
-            urllib.request.urlretrieve("https://heasarc.gsfc.nasa.gov/FTP/fermi/data/gbm/bursts/20{}/bn{}/quicklook/glg_lc_medres34_bn{}.gif".format(self.yr, self.fullname, self.fullname), "./{}/GBM/{}-lc.gif".format(self.fullname,self.GRB_name))
-            for version in range(10):
-                version=9-version
-                try:
-                    urllib.request.urlopen(urllib.request.Request("{}/20{}/bn{}/current/glg_bcat_all_bn{}_v0{}.fit".format(self.downAdd,self.yr,self.fullname,self.fullname,version))) 
-                    urllib.request.urlretrieve("{}/20{}/bn{}/current/glg_bcat_all_bn{}_v0{}.fit".format(self.downAdd,self.yr,self.fullname,self.fullname,version), "./{}/GBM/{}-bcat.fit".format(self.fullname,self.GRB_name))
-                    break
-                except:
-                    continue
+
+        urllib.request.urlretrieve("{}/20{}/bn{}/quicklook/glg_lc_medres34_bn{}.gif".format(self._GBM_download_address,self.yr,self.full_name,self.full_name), "./{}/GBM/{}-lc.gif".format(self.full_name,self.event_name))
 
         if self.verbose: print("Checking tte file version...")
         for version in range(10):
             version=9-version
             try:
-                urllib.request.urlopen(urllib.request.Request("{}/20{}/bn{}/current/glg_tte_{}_bn{}_v0{}.fit".format(self._GBMdownAdd,self.yr,self.fullname,dwDet[0],self.fullname,version))) 
+                urllib.request.urlopen(urllib.request.Request("{}/20{}/bn{}/current/glg_tte_{}_bn{}_v0{}.fit".format(self._GBM_download_address,self.yr,self.full_name,dwDet[0],self.full_name,version))) 
                 break
             except:
                 continue
@@ -63,7 +53,7 @@ class DownloadData(EventInfo):
         for version in range(10):
             version=9-version
             try:
-                urllib.request.urlopen(urllib.request.Request("{}/20{}/bn{}/current/glg_cspec_{}_bn{}_v0{}.pha".format(self._GBMdownAdd,self.yr,self.fullname,dwDet[0],self.fullname,version))) 
+                urllib.request.urlopen(urllib.request.Request("{}/20{}/bn{}/current/glg_cspec_{}_bn{}_v0{}.pha".format(self._GBM_download_address,self.yr,self.full_name,dwDet[0],self.full_name,version))) 
                 break
             except:
                 continue
@@ -74,81 +64,77 @@ class DownloadData(EventInfo):
         for version in range(10):
             version=9-version
             try:
-                
-                urllib.request.urlopen(urllib.request.Request("{}/20{}/bn{}/current/glg_cspec_{}_bn{}_v0{}.rsp2".format(self._GBMdownAdd,self.yr,self.fullname,dwDet[0],self.fullname,version))) 
+                urllib.request.urlopen(urllib.request.Request("{}/20{}/bn{}/current/glg_cspec_{}_bn{}_v0{}.rsp2".format(self._GBM_download_address,self.yr,self.full_name,dwDet[0],self.full_name,version))) 
                 rsp2Flag=True
-                
                 break
             except:
                 try:
-                    urllib.request.urlopen(urllib.request.Request("{}/20{}/bn{}/current/glg_cspec_{}_bn{}_v0{}.rsp".format(self._GBMdownAdd,self.yr,self.fullname,dwDet[0],self.fullname,version)))
+                    urllib.request.urlopen(urllib.request.Request("{}/20{}/bn{}/current/glg_cspec_{}_bn{}_v0{}.rsp".format(self._GBM_download_address,self.yr,self.full_name,dwDet[0],self.full_name,version)))
                     break
                 except:
                     continue
         rspV = version
         
-        
-                
         if self.verbose:
-            print("GRB{} rsp info: version (TTE:{}, CSPEC:{}, RSP:{}, rsp2: {})".format(self.fullname, tteV, cspecV, rspV, rsp2Flag))
+            print("GRB{} rsp info: version (TTE:{}, CSPEC:{}, RSP:{}, rsp2: {})".format(self.full_name, tteV, cspecV, rspV, rsp2Flag))
 
         for gbm in dwDet:
             
             # tte files
-            dwUrl = "{}/20{}/bn{}/current/glg_tte_{}_bn{}_v0{}.fit".format(self._GBMdownAdd,self.yr,self.fullname,gbm,self.fullname, tteV)
-            dwFile = "./{}/GBM/glg_tte_{}_bn{}_v00.fit".format(self.fullname,gbm,self.fullname)
-            self.__download_process__(dwUrl, dwFile)
+            dwUrl = "{}/20{}/bn{}/current/glg_tte_{}_bn{}_v0{}.fit".format(self._GBM_download_address,self.yr,self.full_name,gbm,self.full_name, tteV)
+            dwFile = "./{}/GBM/glg_tte_{}_bn{}_v00.fit".format(self.full_name,gbm,self.full_name)
+            self.__DownloadProcess__(dwUrl, dwFile)
 
             # pha files
-            dwUrl = "{}/20{}/bn{}/current/glg_cspec_{}_bn{}_v0{}.pha".format(self._GBMdownAdd,self.yr,self.fullname,gbm,self.fullname, cspecV)
-            dwFile = "./{}/GBM/glg_cspec_{}_bn{}_v00.pha".format(self.fullname,gbm,self.fullname)
-            self.__download_process__(dwUrl, dwFile)
+            dwUrl = "{}/20{}/bn{}/current/glg_cspec_{}_bn{}_v0{}.pha".format(self._GBM_download_address,self.yr,self.full_name,gbm,self.full_name, cspecV)
+            dwFile = "./{}/GBM/glg_cspec_{}_bn{}_v00.pha".format(self.full_name,gbm,self.full_name)
+            self.__DownloadProcess__(dwUrl, dwFile)
         
             # rsp file           
             if rsp2Flag:
-                dwUrl = "{}/20{}/bn{}/current/glg_cspec_{}_bn{}_v0{}.rsp2".format(self._GBMdownAdd,self.yr,self.fullname,gbm,self.fullname, rspV)
-                dwFile = "./{}/GBM/glg_cspec_{}_bn{}_v00.rsp2".format(self.fullname,gbm,self.fullname)
-                self.__download_process__(dwUrl, dwFile)
+                dwUrl = "{}/20{}/bn{}/current/glg_cspec_{}_bn{}_v0{}.rsp2".format(self._GBM_download_address,self.yr,self.full_name,gbm,self.full_name, rspV)
+                dwFile = "./{}/GBM/glg_cspec_{}_bn{}_v00.rsp2".format(self.full_name,gbm,self.full_name)
+                self.__DownloadProcess__(dwUrl, dwFile)
             else:
-                dwUrl = "{}/20{}/bn{}/current/glg_cspec_{}_bn{}_v0{}.rsp".format(self._GBMdownAdd,self.yr,self.fullname,gbm,self.fullname, rspV)
-                dwFile = "./{}/GBM/glg_cspec_{}_bn{}_v00.rsp".format(self.fullname,gbm,self.fullname)
-                self.__download_process__(dwUrl, dwFile)
+                dwUrl = "{}/20{}/bn{}/current/glg_cspec_{}_bn{}_v0{}.rsp".format(self._GBM_download_address,self.yr,self.full_name,gbm,self.full_name, rspV)
+                dwFile = "./{}/GBM/glg_cspec_{}_bn{}_v00.rsp".format(self.full_name,gbm,self.full_name)
+                self.__DownloadProcess__(dwUrl, dwFile)
         
         if self.verbose: print("Completed (GBM)")
 
                 
-    def LLEdownload(self):
+    def DownloadLLE(self):
         for version in range(10):
             version=9-version
             try:
-                urllib.request.urlopen(urllib.request.Request("{}/20{}/bn{}/current/gll_selected_bn{}_v0{}.fit".format(self._LATdownAdd,self.yr,self.fullname,self.fullname,version)))
+                urllib.request.urlopen(urllib.request.Request("{}/20{}/bn{}/current/gll_selected_bn{}_v0{}.fit".format(self._LAT_download_address,self.yr,self.full_name,self.full_name,version)))
                 break
             except:
                 continue
 
         # tte file
-        dwUrl = "{}/20{}/bn{}/current/gll_selected_bn{}_v0{}.fit".format(self._LATdownAdd,self.yr,self.fullname,self.fullname,version)
-        dwFile = "./{}/LAT/{}-LLE.fit".format(self.fullname,self.GRB_name)
-        self.__download_process__(dwUrl, dwFile)
+        dwUrl = "{}/20{}/bn{}/current/gll_selected_bn{}_v0{}.fit".format(self._LAT_download_address,self.yr,self.full_name,self.full_name,version)
+        dwFile = "./{}/LAT/{}-LLE.fit".format(self.full_name,self.event_name)
+        self.__DownloadProcess__(dwUrl, dwFile)
 
         # rsp file
-        dwUrl = "{}/20{}/bn{}/current/gll_cspec_bn{}_v0{}.rsp".format(self._LATdownAdd,self.yr,self.fullname,self.fullname,version)
-        dwFile = "./{}/LAT/{}-LLE.rsp".format(self.fullname,self.GRB_name)
-        self.__download_process__(dwUrl, dwFile)
+        dwUrl = "{}/20{}/bn{}/current/gll_cspec_bn{}_v0{}.rsp".format(self._LAT_download_address,self.yr,self.full_name,self.full_name,version)
+        dwFile = "./{}/LAT/{}-LLE.rsp".format(self.full_name,self.event_name)
+        self.__DownloadProcess__(dwUrl, dwFile)
 
         if self.verbose: print("Completed (LLE)")
 
         
-    def LATdownload(self):
+    def DownloadLAT(self):
         if not(self.forcedDwn):
-            if os.path.isfile("./{}/LAT/{}-EV00.fits".format(self.fullname,self.GRB_name)):
+            if os.path.isfile("./{}/LAT/{}-EV00.fits".format(self.full_name,self.event_name)):
                 return 
         url                         = "https://fermi.gsfc.nasa.gov/cgi-bin/ssc/LAT/LATDataQuery.cgi"
         parameters                  = {}
-        parameters['coordfield']    = "%s,%s" %(self._refRa,self._refDec)
+        parameters['coordfield']    = "%s,%s" %(self.refRa,self.refDec)
         parameters['coordsystem']   = "J2000"
         parameters['shapefield']    = "%s" %(15)
-        parameters['timefield']     = "%s,%s" %(self.Trigger-100.,self.Trigger+2000)
+        parameters['timefield']     = "%s,%s" %(self.trigger-100.,self.trigger+2000)
         parameters['timetype']      = "%s" %("MET")
         parameters['energyfield']   = "100,10000"
         parameters['photonOrExtendedOrNone'] = "Extended"
@@ -227,14 +213,15 @@ class DownloadData(EventInfo):
             os.remove(fakeName)
             urllib.request.urlcleanup()
         
-        np.save("./{}/LAT/link.npy".format(self.fullname), links)
+        np.save("./{}/LAT/link.npy".format(self.full_name), links)
         for lk in links:
             print("Downloading ... ", lk)
-            urllib.request.urlretrieve(lk, "./{}/LAT/{}-{}.fits".format(self.fullname,self.GRB_name, lk[-9:-5]))
+            urllib.request.urlretrieve(lk, "./{}/LAT/{}-{}.fits".format(self.full_name,self.event_name, lk[-9:-5]))
 
         if self.verbose: print("Completed (LAT)")
  
-    def __download_process__(self, dwUrl, dwFile):
+    def __DownloadProcess__(self, dwUrl, dwFile):
         if self.forcedDwn or not(os.path.isfile(dwFile)):
             if self.verbose: print("Downloading... ", dwUrl)
             urllib.request.urlretrieve(dwUrl, dwFile)
+
