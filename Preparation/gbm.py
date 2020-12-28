@@ -6,20 +6,13 @@ import os
 import sys
 from astropy.io import fits
 
-from XspecT.info import EventInfo
+from ..info import EventInfo
 
 
 class PrepGBM(EventInfo):
     
     def __init__(self, grb, tRan = [None, None], forcedGen = False, verbose=False, version=0, **kwargs):
-        
-        if hasattr(grb, 'dtype'):
-            grb = grb.decode('UTF-8')
-        else:
-            try:
-                grb = grb.astype(str)
-            except:
-                pass
+ 
 
         super().__init__(grb, tRan = tRan, version = version, **kwargs)
         self.verbose=verbose
@@ -30,22 +23,22 @@ class PrepGBM(EventInfo):
     def Preparation(self):
         for det in self.usedGBM:
 
-            bkFileFlag = os.path.isfile('./{}/Xspec/{}-{}-.bak'.format(self.fullname, self.GRB_name, det))
+            bkFileFlag = os.path.isfile('./{}/Xspec/{}-{}-.bak'.format(self.full_name, self.event_name, det))
             if self.forcedGen:
                 if bkFileFlag:
-                    os.system("rm ./{}/Xspec/glg_cspec_{}_bn{}_xspec_v00.bak".format(self.fullname, det, self.fullname))
+                    os.system("rm ./{}/Xspec/glg_cspec_{}_bn{}_xspec_v00.bak".format(self.full_name, det, self.full_name))
             elif bkFileFlag:
                 return
 
             data = gspec.GspecManager()
 
-            forder, maxt = self.polyFit(det)
+            forder, maxt = self.PolyFit(det)
 
-            detName = data.add_data("./{}/GBM/glg_cspec_{}_bn{}_v00.pha".format(self.fullname, det, self.fullname))
+            detName = data.add_data("./{}/GBM/glg_cspec_{}_bn{}_v00.pha".format(self.full_name, det, self.full_name))
             try:
-                data.add_response(detName,"./{}/GBM/glg_cspec_{}_bn{}_v00.rsp2".format(self.fullname, det, self.fullname))
+                data.add_response(detName,"./{}/GBM/glg_cspec_{}_bn{}_v00.rsp2".format(self.full_name, det, self.full_name))
             except:
-                data.add_response(detName,"./{}/GBM/glg_cspec_{}_bn{}_v00.rsp".format(self.fullname, det, self.fullname))
+                data.add_response(detName,"./{}/GBM/glg_cspec_{}_bn{}_v00.rsp".format(self.full_name, det, self.full_name))
             if 'n' in det:
                 data.energy_selection(detName, data.cspec_nai_default)
             elif 'b' in det:
@@ -56,45 +49,45 @@ class PrepGBM(EventInfo):
             data.clear_time_binning(detName)
             
 
-            data.source_selection(detName, [self._tStart, self._tEnd])
+            data.source_selection(detName, [self._time_start, self._time_end])
             order = 1
-            data.add_background(detName, [[-200, -50], [self._tEnd+50, self._tEnd+maxt]],'Polynomial', forder)
-            data.export_to_xspec(detName, directory='./{}/Xspec/'.format(self.fullname))
+            data.add_background(detName, [[-200, -50], [self._time_end+50, self._time_end+maxt]],'Polynomial', forder)
+            data.export_to_xspec(detName, directory='./{}/Xspec/'.format(self.full_name))
             
-            os.system('mv ./{}/Xspec/glg_cspec_{}_bn{}_xspec_v00.bak ./{}/Xspec/{}-{}.bak'.format(self.fullname, det, self.fullname, self.fullname, self.GRB_name, det))
-            os.system('mv ./{}/Xspec/glg_cspec_{}_bn{}_xspec_v00.pha ./{}/Xspec/{}-{}.pha'.format(self.fullname, det, self.fullname, self.fullname, self.GRB_name, det))
-            os.system('mv ./{}/Xspec/glg_cspec_{}_bn{}_xspec_v00.rsp ./{}/Xspec/{}-{}.rsp'.format(self.fullname, det, self.fullname, self.fullname, self.GRB_name, det))
+            os.system('mv ./{}/Xspec/glg_cspec_{}_bn{}_xspec_v00.bak ./{}/Xspec/{}-{}.bak'.format(self.full_name, det, self.full_name, self.full_name, self.event_name, det))
+            os.system('mv ./{}/Xspec/glg_cspec_{}_bn{}_xspec_v00.pha ./{}/Xspec/{}-{}.pha'.format(self.full_name, det, self.full_name, self.full_name, self.event_name, det))
+            os.system('mv ./{}/Xspec/glg_cspec_{}_bn{}_xspec_v00.rsp ./{}/Xspec/{}-{}.rsp'.format(self.full_name, det, self.full_name, self.full_name, self.event_name, det))
             
-            with fits.open('./{}/Xspec/{}-{}.pha'.format(self.fullname, self.GRB_name, det), mode='update') as phafile:
-                phafile[0].header['FILENAME'] = '{}-{}.pha'.format(self.GRB_name, det)
-                phafile[1].header['FILENAME'] = '{}-{}.pha'.format(self.GRB_name, det)
-                phafile[2].header['FILENAME'] = '{}-{}.pha'.format(self.GRB_name, det)
-                phafile[3].header['FILENAME'] = '{}-{}.pha'.format(self.GRB_name, det)
-                phafile[2].header['RESPFILE'] = './{}/Xspec/{}-{}.rsp'.format(self.fullname, self.GRB_name, det)
-                phafile[2].header['BACKFILE'] = './{}/Xspec/{}-{}.bak'.format(self.fullname, self.GRB_name, det)
+            with fits.open('./{}/Xspec/{}-{}.pha'.format(self.full_name, self.event_name, det), mode='update') as phafile:
+                phafile[0].header['FILENAME'] = '{}-{}.pha'.format(self.event_name, det)
+                phafile[1].header['FILENAME'] = '{}-{}.pha'.format(self.event_name, det)
+                phafile[2].header['FILENAME'] = '{}-{}.pha'.format(self.event_name, det)
+                phafile[3].header['FILENAME'] = '{}-{}.pha'.format(self.event_name, det)
+                phafile[2].header['RESPFILE'] = './{}/Xspec/{}-{}.rsp'.format(self.full_name, self.event_name, det)
+                phafile[2].header['BACKFILE'] = './{}/Xspec/{}-{}.bak'.format(self.full_name, self.event_name, det)
 
-            with fits.open('./{}/Xspec/{}-{}.bak'.format(self.fullname, self.GRB_name, det), mode='update') as backfile:
-                backfile[0].header['FILENAME'] = '{}-{}.bak'.format(self.GRB_name, det)
-                backfile[1].header['FILENAME'] = '{}-{}.bak'.format(self.GRB_name, det)
-                backfile[2].header['FILENAME'] = '{}-{}.bak'.format(self.GRB_name, det)
-                backfile[3].header['FILENAME'] = '{}-{}.bak'.format(self.GRB_name, det)
+            with fits.open('./{}/Xspec/{}-{}.bak'.format(self.full_name, self.event_name, det), mode='update') as backfile:
+                backfile[0].header['FILENAME'] = '{}-{}.bak'.format(self.event_name, det)
+                backfile[1].header['FILENAME'] = '{}-{}.bak'.format(self.event_name, det)
+                backfile[2].header['FILENAME'] = '{}-{}.bak'.format(self.event_name, det)
+                backfile[3].header['FILENAME'] = '{}-{}.bak'.format(self.event_name, det)
                 
-            with fits.open('./{}/Xspec/{}-{}.rsp'.format(self.fullname, self.GRB_name, det), mode='update') as rspfile:
-                rspfile[0].header['FILENAME'] = '{}-{}.rsp'.format(self.GRB_name, det)
-                rspfile[1].header['FILENAME'] = '{}-{}.rsp'.format(self.GRB_name, det)
-                rspfile[2].header['FILENAME'] = '{}-{}.rsp'.format(self.GRB_name, det)
+            with fits.open('./{}/Xspec/{}-{}.rsp'.format(self.full_name, self.event_name, det), mode='update') as rspfile:
+                rspfile[0].header['FILENAME'] = '{}-{}.rsp'.format(self.event_name, det)
+                rspfile[1].header['FILENAME'] = '{}-{}.rsp'.format(self.event_name, det)
+                rspfile[2].header['FILENAME'] = '{}-{}.rsp'.format(self.event_name, det)
 
-    def polyFit(self, det):
+    def PolyFit(self, det):
         for order in [1,2,3,4]:
             chidist = []
             ytot = 0
             mytot = 0
             for i in range(16, 120):
                 
-                y = fits.open("./{}/GBM/glg_cspec_{}_bn{}_v00.pha".format(self.fullname, det, self.fullname))[2].data['Counts'][:,i]/fits.open("./{}/GBM/glg_cspec_{}_bn{}_v00.pha".format(self.fullname, det, self.fullname))[2].data['Exposure']
-                x = fits.open("./{}/GBM/glg_cspec_{}_bn{}_v00.pha".format(self.fullname, det, self.fullname))[2].data['Time']-self.Trigger
+                y = fits.open("./{}/GBM/glg_cspec_{}_bn{}_v00.pha".format(self.full_name, det, self.full_name))[2].data['Counts'][:,i]/fits.open("./{}/GBM/glg_cspec_{}_bn{}_v00.pha".format(self.full_name, det, self.full_name))[2].data['Exposure']
+                x = fits.open("./{}/GBM/glg_cspec_{}_bn{}_v00.pha".format(self.full_name, det, self.full_name))[2].data['Time']-self.trigger
                 ytot +=y
-                bakRan = ((x>-200) * (x<-50))  + ((x>(self._tEnd+50))  * (x<(self._tEnd+300)))
+                bakRan = ((x>-200) * (x<-50))  + ((x>(self._time_end+50))  * (x<(self._time_end+300)))
                     
                 xbak = x[bakRan]
                 ybak = y[bakRan]
@@ -116,8 +109,7 @@ class PrepGBM(EventInfo):
             if max(chidist) < 1.2:
                 forder = order
                 if self.verbose: 
-
-                    print("Background polynomial fit for {} (order = {}): Reduced chi^2 = {:.2f}".format(forder, det, np.average(chidist), det, forder))
+                    print("Background polynomial fit for {} (order = {}): Reduced chi^2 = {:.2f}".format(det, forder, np.average(chidist)))
                 break
             else:
                 forder = 1
@@ -127,10 +119,10 @@ class PrepGBM(EventInfo):
             ax[0].plot(x, ytot)
             ax[0].plot(x, mytot)
             ax[0].axvline(0, ls=":", color='r')
-            ax[0].axvspan(self._tStart, self._tEnd, facecolor='orange', edgecolor="k", alpha=0.2, lw=1, zorder=-1)
+            ax[0].axvspan(self._time_start, self._time_end, facecolor='orange', edgecolor="k", alpha=0.2, lw=1, zorder=-1)
             ax[0].set_xlim(-200, max(xbak))
             ax[0].set_ylim(-10,)
-            ax[0].set_title("GRB{}".format(self.fullname))
+            ax[0].set_title("GRB{}".format(self.full_name))
             ax[0].set_xlabel(r"Time Since Trigger ($T_0$)")
             ax[0].set_ylabel("Counts")
 
@@ -139,7 +131,7 @@ class PrepGBM(EventInfo):
             ax[1].set_ylabel(r"$\chi^2$")
             ax[1].axhline(1, ls=':', color='gray')
             ax[1].set_title("{}, {}-order polynomial fit".format(det, forder))
-            plt.savefig("./{}/GBM/{}_bk_chisq.png".format(self.fullname, det))
+            plt.savefig("./{}/GBM/{}_bk_chisq.png".format(self.full_name, det))
             plt.show(block=False)
         
         

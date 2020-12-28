@@ -85,7 +85,7 @@ from xml.dom.minidom import parseString as pS
 from numpy import floor,log10,cos,sin,arccos,pi,array,log,exp
 acos=arccos
 
-from .addGRB import addGRB # BY D.Tak
+from .addGRB import AddGRB # BY D.Tak
 
 #import ROOT #note that this is only done to turn tab completion on for functions and filenames
 
@@ -298,7 +298,7 @@ def addSrcsFITS(sL,GD,GDn,ISO,ISOn,oldNames):
 	model.write('<source_library title="source library">\n')
 	model.write('\n<!-- Point Sources -->\n')
 
-	model.write(addGRB(sL.roi[0], sL.roi[1])) # BY D.Tak
+	model.write(AddGRB(sL.roi[0], sL.roi[1])) # BY D.Tak
 
 	step=(sL.roi[2]+sL.ER)/5. #divide ROI radius plus ExtraRadius degrees into 5 steps for ordering of sources
 	i=1

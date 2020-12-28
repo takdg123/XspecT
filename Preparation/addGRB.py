@@ -1,4 +1,4 @@
-def addGRB(ra,dec):
+def AddGRB(ra,dec):
 	Name='<source name="GRB" type="PointSource">\n'
 	spec='\t<spectrum type="PowerLaw2">\n'
 	spec+='\t\t<parameter free="1" max="1000.0" min="1e-05" name="Integral" scale="1e-06" value="1.0"/>\n'

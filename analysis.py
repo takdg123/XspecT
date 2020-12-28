@@ -5,75 +5,91 @@ import os
 import sys
 import glob
 
-from xspec import *
-import XspecModels
-import XspecFunctions
-from XspecFunctions import *
-import XspecBackground
-from XspecTable import *
-from XspecUtils import *
-
 from astropy.io import fits
 
 import gt_apps
 from gt_apps import *
 from GtApp import GtApp
+bindef = GtApp('gtbindef','Likelihood')
 
 from scipy.integrate import quad
 from datetime import datetime
-bindef = GtApp('gtbindef','Likelihood')
 
-from IPython.display import clear_output
+from xspec import *
+from . import Utilities
+from .Utilities.functions import *
+from .info import EventInfo
 
+class Analysis(EventInfo):
 
-
-class Xspec_T:
-
-    def __init__(self, EvtInfo={}, verbose=False, only='', folder = ''):
-        if verbose:
+    def __init__(self, info=None, EvtInfo={}, verbose = False, only='GBMLAT', **kwargs):
+        self.verbose = verbose
+        if self.verbose == 2 or info==None:
             print("config = {}")
-            print("config['Name'] = '131108A'")
-            print("config['Trigger'] = 405636118")
-            print("config['RA'] = 156.50187")
-            print("config['DEC'] = 9.66225")
-            print("config['T90'] = [0.319986, 18.496286]")
-            print("config['usedGBM'] = ['n0','n3','n6','n7','b0','b1']")
-            print("config['timeintervals'] = cuts")
-            print("Fitting = Xspec_T(EvtInfo=config) or Fitting.configuration(config)")
-            print("Fitting.runFit(1,1)")
-            print("Fitting.printSED()")
-            print("Fitting.printTable()")
+            print("config['Name']: e.g., '131108A'")
+            print("config['Trigger']: e.g., 405636118")
+            print("config['RA']: e.g., 156.50187")
+            print("config['DEC']: e.g., 9.66225")
+            print("config['T90']: [T05, T95]; e.g., [0.319986, 18.496286]")
+            print("config['usedGBM']: ['n0','n3','n6','n7','b0','b1']")
+            print("config['TimeEdge']: Time edges; e.g., [0, 1, 2, 3, 4, 5]")
+            print("config['TimeInterval']: Time intervals; e.g., [[0, 1], [1, 2], [2, 3]]")
+            print("config['TimeStart']: Start times; e.g., [0, 1, 2, 3, 4] ")
+            print("config['TimeEnd']: End times; e.g., [1, 2, 3, 4, 5] ")
+            print("Fitting = Analysis(grb, EvtInfo=config) or Fitting.Configuration(config)")
+            print("Fitting.RunFit(1,1)")
+            print("Fitting.PrintSED()")
+            print("Fitting.PrintResult()")
+            sys.exit()
 
-        if len(EvtInfo)!=0:
-            self.configuration(EvtInfo, only=only, folder=folder)
+        if type(info) == str or type(info) == int:
+            super().__init__(str(info),  **kwargs)
+            self.Configuration(EvtInfo, only=only)
+        elif type(info) == dict:
+            info = {**info, **EvtInfo}
+            self.Configuration(info, only=only)
 
-    def configuration(self, config, only='', folder = ''):
-        self._GRBname = config['Name']
-        self._T0 = config['Trigger']
-        self._T90 = config['T90']
-        self._refRa = config['RA']
-        self._refDec = config['DEC']
-        self._usedGBM = config['usedGBM']
-        self._timeInt = np.asarray(config['timeintervals'])
-        if 'redshift' in config.keys():
-            self._redshift = config['redshift']
-        if 'nH' in config.keys():
-            self._nH = config['nH']
+    def Configuration(self, config, only='GBMLAT'):
+        keys = config.keys()
+        if "Name" in keys:          self.event_name = config['Name']
+        if "Trigger" in keys:       self.trigger = config['Trigger']
+        if "T90" in keys:           
+            self.t05 = config['T90'][0]
+            self.t95 = config['T90'][1]
+            self.t90 = config['T90'][1] - config['T90'][0]
+        if "RA" in keys:            self.refRa = config['RA']
+        if "DEC" in keys:           self.refDec = config['DEC']
+        if "usedGBM" in keys:       self.usedGBM = config['usedGBM']
+
+        self.time_intervals = []
+        if "TimeInterval" in keys: 
+            if np.size(config["TimeInterval"], axis=1) == 2:
+                self.time_intervals = config["TimeInterval"]
+        if "TimeEdge" in keys:
+            for i in range(len(config["TimeEdge"])-1):
+                self.time_intervals.append([config["TimeEdge"][i], config["TimeEdge"][i+1]])
+        if "TimeStart" in keys and "TimeEnd" in keys:
+            for s, e in zip(config["TimeStart"], config["TimeEnd"]):
+                self.time_intervals.append([s, e])
+        if len(self.time_intervals) == 0:
+            self.time_intervals = [self.time_range]
+            self._time_start_set = [self.time_intervals[0][0] + self.trigger]
+            self._time_end_set = [self.time_intervals[0][1] + self.trigger]
+        else:
+            self._time_start_set = self.trigger+np.asarray(self.time_intervals)[:,0]
+            self._time_end_set = self.trigger+np.asarray(self.time_intervals)[:,1]
+        
+        if 'redshift' in keys:      self.redshift = config['redshift']
+        if 'nH' in keys:            self._nH = config['nH']
+        
         self._only = only
-        try:
-            self._tS_set = self._T0+np.asarray(config['t_start'])
-            self._tE_set = self._T0+np.asarray(config['t_end'])
-        except:
-            self._tS_set = self._T0+np.asarray(self._timeInt)[:-1]
-            self._tE_set = self._T0+np.asarray(self._timeInt)[1:]
-            
-        self._usedData = self.__SelectedDet__(self._only)
-        self._address = folder
-        self._addressToData = self._address+"/Xspec/"+self._GRBname+''
-        self.__reset__()
+        self._usedData = self.__SelectedData__(self._only)        
+        self.__Reset__()
+        if self.verbose:
+            self.PrintTimeItv()
 
 
-    def setInit(self, mod_num, init = {}, verbose=True):
+    def SetInit(self, m_num, init = {}, verbose=True):
         try:
             AllModels.addPyMod(bkn2power, bkn2powParInfo, 'add')
             #AllModels.addPyMod(doublegrbm, doublegrbmInfo, 'add')
@@ -84,39 +100,39 @@ class Xspec_T:
             AllModels.addPyMod(multiBB, mBB_Info, 'add')
         except:
             pass
-        models = self.__rearrModel__(mod_num)
+        models = self.__RearrModel__(m_num)
         Model_Xspec = Model(models)
-        parN = 1
+        parNum = 1
         for comp in Model_Xspec.componentNames:
             parameters = Model_Xspec.__getattribute__(comp)
             if len(init)==0: 
                 print(comp, parameters.parameterNames)
-                print(self._setP[mod_num])
+                print(self._setP[m_num])
             else:
                 for par in parameters.parameterNames:
                     try:
-                        if verbose: print(comp, par, init[parN])
+                        if verbose: print(comp, par, init[parNum])
                     except:
                         if verbose: print(comp, par)
-                    parN+=1
+                    parNum+=1
 
         changedInitP = np.asarray(self._newP)
         if len(self._newP)>0:
-            if mod_num not in changedInitP[:,0] and init!={}:
-                self._newP.append([mod_num, init])
+            if m_num not in changedInitP[:,0] and init!={}:
+                self._newP.append([m_num, init])
             else:
-                changedInitP[np.where(changedInitP[:,0] == mod_num)[0][0]][1] = init
+                changedInitP[np.where(changedInitP[:,0] == m_num)[0][0]][1] = init
                 self._newP = changedInitP.tolist()
         else:
-            self._newP.append([mod_num, init])
+            self._newP.append([m_num, init])
 
     @classmethod
-    def printModels(self):
+    def PrintModels(self):
         makeMtable = []
         i = 0
         j = 0
         temp = []
-        for mod in XspecModels.ModelList:
+        for mod in Utilities.models.model_list:
             temp.append(j)
             temp.append(mod)
             i+=1
@@ -127,16 +143,16 @@ class Xspec_T:
             j+=1
         makeMtable.append(temp)
 
-        return ModelTable(makeMtable)
+        return Utilities.table.ModelTable(makeMtable)
 
-    def printTimeItv(self):
+    def PrintTimeItv(self):
         makeTtable = []
         i = 0
         j = 0
         temp = []
-        for ti, te in zip(self._tS_set, self._tE_set):
+        for ti, te in zip(self._time_start_set, self._time_end_set):
             temp.append(j)
-            temp.append("{:.2f} - {:.2f}".format(ti-self._T0, te-self._T0))
+            temp.append("{:.2f} - {:.2f}".format(ti-self.trigger, te-self.trigger))
             i+=1
             if i >4:
                 makeTtable.append(temp)
@@ -144,122 +160,142 @@ class Xspec_T:
                 i=0
             j+=1
         makeTtable.append(temp)
-        return IntvTable(makeTtable)
+        return Utilities.table.IntvTable(makeTtable)
 
-    def saveFit(self, filename):
-        self.OUTPUT = np.save(filename, self.OUTPUT)
+    def SaveFit(self, filename):
+        np.save(filename, self.output)
+        np.save(filename+"_plot", self.data_points)
 
-    def loadFit(self, filename):
-        self.OUTPUT = np.load(filename+'.npy')
+    def LoadFit(self, filename):
+        self.output = np.load(filename+".npy")
+        self.data_points = np.load(filename+"_plot.npy")
 
-    def runFit(self, mod_num = 0, ti_num = 0, newInit = False, debug = False, paired = False, BAT=False, XRT=False, dtType=1, rspT = True,verbose=True,  **kwargs):
+    def RunXspec(self, m_num = 0, ti_num = 0, only=None, newInit = False, paired = False, dataType = 1, rspType = True, BAT = False, XRT = False, debug = False, **kwargs):
+        if self.verbose == 2:
+            print("m_num: check PrintModels")
+            print("ti_num: check PrintTimeItv")
+            print("paired (boolen): If True, set [[m_num, ti_num], ...] = [[m, t], ...].")
+            print("newInit: update the initial parameters")
+            print("rspType (boolen): use rsp2 file.")
+            print("dataType (boolen)")
+            sys.exit()
+
         self.__dict__.update(kwargs)
-        try:
-            self._GRBname
-        except:
-            print("Initiate configuration first")
-            self.__init__(verbose=True)
-            sys.exit() 
+        
+        if only !=None:
+            self._only = only
 
         if paired:
-            if np.size(mod_num)>2:
-                self._mod_num = np.asarray(mod_num)[:,0]
-                self._ti_num = np.asarray(mod_num)[:,1]
+            if np.size(m_num)>2:
+                self._m_num = np.asarray(m_num)[:,0]
+                self._ti_num = np.asarray(m_num)[:,1]
             else:
-                self._mod_num = [mod_num[0]]
-                self._ti_num = [mod_num[1]]
-        elif np.size(ti_num) == np.size(mod_num):
-            if np.size(mod_num) == 1:
+                self._m_num = [m_num[0]]
+                self._ti_num = [m_num[1]]
+
+        elif np.size(ti_num) == np.size(m_num):
+            if np.size(m_num) == 1:
                 self._ti_num = [ti_num]
-                self._mod_num = [mod_num]
+                self._m_num = [m_num]
             else:
                 self._ti_num = ti_num
-                self._mod_num = mod_num
+                self._m_num = m_num
+
         elif ti_num == -1:
-            self._ti_num = (np.zeros(np.size(mod_num)) -1).astype(int)
-            self._mod_num = mod_num
-        elif np.size(ti_num) == 1 and np.size(mod_num) != 1:
-            self._ti_num = (np.zeros(np.size(mod_num)) + ti_num).astype(int)
-            self._mod_num = mod_num
-        elif np.size(ti_num) >= 1 and np.size(mod_num) >= 1:
+            self._ti_num = (np.zeros(np.size(m_num)) -1).astype(int)
+            self._m_num = m_num
+
+        elif np.size(ti_num) == 1 and np.size(m_num) != 1:
+            self._ti_num = (np.zeros(np.size(m_num)) + ti_num).astype(int)
+            self._m_num = m_num
+
+        elif np.size(ti_num) >= 1 and np.size(m_num) >= 1:
             self._ti_num = []
-            self._mod_num = []
+            self._m_num = []
             for t in ti_num:
-                for m in mod_num:
+                for m in m_num:
                     self._ti_num.append(t)
-                    self._mod_num.append(m)
+                    self._m_num.append(m)
         else:
             sys.exit()
         
-        self.OUTPUT = []
-        if verbose and ti_num!=-1: print("{:^25} | {:^15} | {:^27}".format("Model","Time Intv","Status"))
-        sys.stdout.flush()
+        self.output = []
+        self.data_points = []
+        if self.verbose: 
+            print("="*75)
+            print("{:^25} | {:^15} | {:^27}".format("Model","Time Intv","Status"))
+            print("-"*75)
 
-        for mod_num, ti_num in zip(self._mod_num, self._ti_num):
-            if verbose and ti_num!=-1: print("{:^25} | {:>6.2f} - {:<6.2f} | {:^27} \r".format(self._modNames[mod_num], self._tS_set[ti_num]-self._T0, self._tE_set[ti_num]-self._T0, 'Working'))
-            output = self.__Xspec__(mod_num, ti_num, newInit, debug=debug, BAT=BAT, XRT=XRT, dtType=dtType, rspT=rspT)
-            self.OUTPUT.append(output)
+        for m_num, ti_num in zip(self._m_num, self._ti_num):
+            if self.verbose and ti_num!=-1: 
+                print("{:^25} | {:>6.2f} - {:<6.2f} | {:^27}".format(self._model_names[m_num], self._time_start_set[ti_num]-self.trigger, self._time_end_set[ti_num]-self.trigger, 'Working'), end='\r')
+            output, data_points= self.__Fitting__(m_num, ti_num, newInit, debug=debug, BAT=BAT, XRT=XRT, dataType=dataType, rspType=rspType)
+            self.output.append(output)
+            self.data_points.append(data_points)
             
-            if verbose: print("{:^25} | {:>6.2f} - {:<6.2f} | {:^27}".format(self._modNames[mod_num], self._tS_set[ti_num]-self._T0, self._tE_set[ti_num]-self._T0, 'Done'))
-        self._output = self.OUTPUT[-1]
-
+            if self.verbose: 
+                print("{:^25} | {:>6.2f} - {:<6.2f} | {:^27}".format(self._model_names[m_num], self._time_start_set[ti_num]-self.trigger, self._time_end_set[ti_num]-self.trigger, 'Done'))
+        self._current_output = self.output[-1]
+        self._current_data_points = self.data_points[-1]
         
-    def printTable(self, outputN = -1, clear=False, latex=False, norm=True, Epiv=100):
-        if np.size(self.OUTPUT) == 1:
-            self._output = self.OUTPUT[0]
-            self.__makeTable__(self._ti_num[0], clear=clear, norm=norm, latex=latex, Epiv=Epiv)
+        if self.verbose: print("="*75)
+
+    def PrintResult(self, output_num = -1, clear=False, latex=False, norm=True, Epiv=100):
+        if np.size(self.output) == 1:
+            self._current_output = self.output[0]
+            self.__MakeTable__(self._ti_num[0], clear=clear, norm=norm, latex=latex, Epiv=Epiv)
             
-        elif outputN!=-1:
-            self._output = self.OUTPUT[outputN]
-            self.__makeTable__(self._ti_num[outputN], clear=clear, norm=norm, latex=latex, Epiv=Epiv)
+        elif output_num!=-1:
+            self._current_output = self.output[output_num]
+            self.__MakeTable__(self._ti_num[output_num], clear=clear, norm=norm, latex=latex, Epiv=Epiv)
             
         else:
-            self.__clearTable__()
-            for output, ti_num in zip(self.OUTPUT, self._ti_num):
-                self._output = output
-                self.__makeTable__(ti_num, clear=False, norm=norm, latex=latex, Epiv=Epiv)
+            self.__ClearTable__()
+            for output, ti_num in zip(self.output, self._ti_num):
+                self._current_output = output
+                self.__MakeTable__(ti_num, clear=False, norm=norm, latex=latex, Epiv=Epiv)
    
         if latex:
-            FT = FitTable(self.__tableList__(latex=True), parlist=self._FparN, LaTex=latex)
+            FT = Utilities.table.FitTable(self.__TableList__(latex=True), parlist=self._FparN, LaTex=latex)
             print(FT._repr_latex_())
         else:
-            return FitTable(self.__tableList__(), parlist=self._FparN)
+            return Utilities.table.FitTable(self.__TableList__(), parlist=self._FparN)
 
     
-    def printSED(self, outputN = -1, noLC = False, saveFig = False, overlap=True, tRan = [], eRan = [50, 300], verbose=False): 
-        if np.size(self.OUTPUT) == 1:
-            self._output = self.OUTPUT[0]
-            self.__makeSED__(self._mod_num, self._ti_num, noLC = noLC, saveFig = saveFig, tRan=tRan, eRan=eRan, overlap=overlap, verbose=verbose)
-        elif outputN!=-1:
-            self._output = self.OUTPUT[outputN]
-            self.__makeSED__(self._mod_num[outputN], self._ti_num[outputN], noLC = noLC, saveFig = saveFig, tRan=tRan, eRan=eRan, overlap=overlap, verbose=verbose)
+    def PrintSED(self, output_num = -1, lc_flag = False, save_flag = False, overlap=True, time_range = [], energy_range = [50, 300], verbose=False): 
+        if np.size(self.output) == 1:
+            self._current_output = self.output[0]
+            self.__MakeSED__(self._m_num[0], self._ti_num[0], lc_flag = lc_flag, save_flag = save_flag, time_range=time_range, energy_range=energy_range, overlap=overlap, verbose=verbose)
+        elif output_num!=-1:
+            self._current_output = self.output[output_num]
+            self.__MakeSED__(self._m_num[output_num], self._ti_num[output_num], lc_flag = lc_flag, save_flag = save_flag, time_range=time_range, energy_range=energy_range, overlap=overlap, verbose=verbose)
         else:
-            for output, mod_num, ti_num in zip(self.OUTPUT, self._mod_num, self._ti_num):
-                self._output = output
-                self.__makeSED__(mod_num, ti_num, noLC = noLC, saveFig = saveFig, tRan=tRan, eRan=eRan, overlap=overlap, verbose=verbose)
-
-    def printSED_tot(self, saveFig = False, verbose=False):
-        fig, ax = plt.subplots(len(self.OUTPUT)+1,1,figsize=(10, 7), gridspec_kw = {'height_ratios':[7]+(np.zeros(len(self.OUTPUT))+1.5).tolist()}) 
+            for output, m_num, ti_num in zip(self.output, self._m_num, self._ti_num):
+                self._current_output = output
+                self.__MakeSED__(m_num, ti_num, lc_flag = lc_flag, save_flag = save_flag, time_range=time_range, energy_range=energy_range, overlap=overlap, verbose=verbose)
+                '''
+    def printSED_tot(self, save_flag = False, verbose=False):
+        fig, ax = plt.subplots(len(self.output)+1,1,figsize=(10, 7), gridspec_kw = {'height_ratios':[7]+(np.zeros(len(self.output))+1.5).tolist()}) 
         plt.subplots_adjust(hspace=0.01)
 
-        for i in range(len(self.OUTPUT)):
+        for i in range(len(self.output)):
 
-            self._output = self.OUTPUT[i]
+            self._current_output = self.output[i]
             emax = self.__MaxEnergy__(i)
             E = np.logspace(1, emax, 100)
-            Label = r"Episode {} ({:.1f}s - {:.1f}s): {}".format(i+1, self._tS_set[i]-self._T0, self._tE_set[i]-self._T0, self._modNames[self._mod_num[i]])
+            Label = r"Episode {} ({:.1f}s - {:.1f}s): {}".format(i+1, self._time_start_set[i]-self.trigger, self._time_end_set[i]-self.trigger, self._model_names[self._m_num[i]])
             
-            modelF, model_compF, modelF_lu=self.__modelFlux__(E, butterfly=True, erg=True, verbose=verbose)
+            modelF, model_compF, modelF_lu=self.__ModelFlux__(E, butterfly=True, erg=True, verbose=verbose)
             PLT, = ax[0].loglog(E, E**2*modelF, label=Label)
             ax[0].fill_between(E, E**2*modelF_lu[:,0], E**2*modelF_lu[:,1], facecolor='none', alpha=0.3, edgecolor=PLT.get_c(), linewidth=1, antialiased=True)
 
-            x = self._output["PlotX"]
-            y = self._output["PlotY"]
+            x = self._current_output["PlotX"]
+            y = self._current_output["PlotY"]
             newArr = x[:,0].argsort()
             y = y[newArr]
             x = x[newArr]
 
-            modelF, model_compF, etc = self.__modelFlux__(x[:,0], verbose=verbose)
+            modelF, model_compF, etc = self.__ModelFlux__(x[:,0], verbose=verbose)
             try:
                 ratio = np.sign(y[:,0]-x[:,0]**2.*modelF)*abs(np.asarray(y[:,0]-x[:,0]**2.*modelF)/abs(y[:,1]))
             except:
@@ -284,50 +320,58 @@ class Xspec_T:
         ax[0].tick_params(labelsize=12)
         ax[0].grid()
         ax[-1].set_ylabel("Residual [$\sigma$]", fontsize=12)
-        ax[(len(self.OUTPUT)+1)/2].yaxis.set_label_coords(-0.07, 0.5)
+        ax[(len(self.output)+1)/2].yaxis.set_label_coords(-0.07, 0.5)
         ax[-1].set_xlabel('Energy [keV]', fontsize=12)
         ax[-1].tick_params(labelsize=12, axis='x')
 
-        if saveFig:
-            plt.savefig("SED.pdf")
+        if save_flag:
+            plt.save_flag("SED.pdf")
         plt.show(block=False)
+        '''
 
-    def calculateFlux(self, eRan = [10, 1e7], Runs = 100000, erg=False, filename='', output=False, phoflx=False):
+    def CalculateFlux(self, energy_range = [10, 1e7], runs = 100000, erg=False, filename='', output=False, phoflx=False):
         TotalF = []
         CompF = []
         ergCov = 1.6022*10**-9
+
+        print("="*75)
         print("{:^25} | {:^15} | {:^27}".format("Model","Time Intv","Status"))
-        for i in range(np.size(self.OUTPUT)):
-            self._output = self.OUTPUT[i]
-            parSet = self.__genPars__(runs = Runs, sim=True)
+        print("-"*75)
+        for i in range(np.size(self.output)):
+            self._current_output = self.output[i]
+            parSet = self.__GeneratePars__(runs = runs, sim=True)
             synF = []
             synF_comp = []
-            for parS, k in zip(parSet, range(Runs)):
-                parN = 0
+            for parS, k in zip(parSet, range(runs)):
+                parNum = 0
                 totF = 0
                 cF = []
-                for fresult in self._output['Model']:
+                for fresult in self._current_output['Model']:
+
                     model_name = fresult['name']
+                    if model_name =='TBabs' or model_name == 'zTBabs': continue
+                    
                     if phoflx:
-                        model = ModelCov[model_name]
+                        func = globals()[model_name.upper()]
                     else:
-                        model = eModelCov[model_name]
-                    flux = quad(model, eRan[0], eRan[1], args=tuple(parS[ParNCov[model_name]+parN]))[0]
+                        func = globals()["e"+model_name.upper()]
+                    thisParNum = func.__code__.co_argcount-1
+                    flux = quad(func, energy_range[0], energy_range[1], args=tuple(parS[np.arange(thisParNum)+parNum]))[0]
                     cF.append(flux)
                     totF+=flux
-                    parN = max(ParNCov[model_name])+1
+                    parNum += thisParNum
                 synF.append(totF)
                 synF_comp.append(cF)
-                k = int((k+1)*20./Runs)
-                print("{:^25} | {:>6.2f} - {:<6.2f} | [{:<20}] {:.0f}%\r".format(self._modNames[self._mod_num[i]], self._tS_set[self._ti_num[i]]-self._T0, self._tE_set[self._ti_num[i]]-self._T0, '='*k, 5*k))
-                sys.stdout.flush()
+                k = int((k+1)*20./runs)
+                print("{:^25} | {:>6.2f} - {:<6.2f} | [{:<20}] {:.0f}%".format(self._model_names[self._m_num[i]], self._time_start_set[self._ti_num[i]]-self.trigger, self._time_end_set[self._ti_num[i]]-self.trigger, '='*k, 5*k), end='\r')
             
-            print("{:^25} | {:>6.2f} - {:<6.2f} | {:^27}".format(self._modNames[self._mod_num[i]], self._tS_set[self._ti_num[i]]-self._T0, self._tE_set[self._ti_num[i]]-self._T0, 'Done'))
+            print("{:^25} | {:>6.2f} - {:<6.2f} | {:^27}".format(self._model_names[self._m_num[i]], self._time_start_set[self._ti_num[i]]-self.trigger, self._time_end_set[self._ti_num[i]]-self.trigger, 'Done'))
+            print("="*75)
 
             if erg:
-                TotalF.append([synF[-1]*ergCov, np.percentile(synF,16)*ergCov, np.percentile(synF, 84)*ergCov, self._tS_set[self._ti_num[i]]-self._T0, self._tE_set[self._ti_num[i]]-self._T0])
+                TotalF.append([synF[-1]*ergCov, np.percentile(synF,16)*ergCov, np.percentile(synF, 84)*ergCov, self._time_start_set[self._ti_num[i]]-self.trigger, self._time_end_set[self._ti_num[i]]-self.trigger])
             else:
-                TotalF.append([synF[-1], np.percentile(synF,16), np.percentile(synF, 84), self._tS_set[self._ti_num[i]]-self._T0, self._tE_set[self._ti_num[i]]-self._T0])
+                TotalF.append([synF[-1], np.percentile(synF,16), np.percentile(synF, 84), self._time_start_set[self._ti_num[i]]-self.trigger, self._time_end_set[self._ti_num[i]]-self.trigger])
             
             CompF_temp = []
 
@@ -336,15 +380,15 @@ class Xspec_T:
                 CompF_temp = []
                 for j in range(np.size(synF_comp, axis=1)):
                     if erg:
-                        CompF_temp.append([synF_comp[:,j][-1]*ergCov, np.percentile(synF_comp[:,j],16)*ergCov, np.percentile(synF_comp[:,j], 84)*ergCov, self._tS_set[self._ti_num[i]]-self._T0, self._tE_set[self._ti_num[i]]-self._T0])
+                        CompF_temp.append([synF_comp[:,j][-1]*ergCov, np.percentile(synF_comp[:,j],16)*ergCov, np.percentile(synF_comp[:,j], 84)*ergCov, self._time_start_set[self._ti_num[i]]-self.trigger, self._time_end_set[self._ti_num[i]]-self.trigger])
                     else:
-                        CompF_temp.append([synF_comp[:,j][-1], np.percentile(synF_comp[:,j],16), np.percentile(synF_comp[:,j], 84)*ergCov, self._tS_set[self._ti_num[i]]-self._T0, self._tE_set[self._ti_num[i]]-self._T0])
+                        CompF_temp.append([synF_comp[:,j][-1], np.percentile(synF_comp[:,j],16), np.percentile(synF_comp[:,j], 84)*ergCov, self._time_start_set[self._ti_num[i]]-self.trigger, self._time_end_set[self._ti_num[i]]-self.trigger])
                 CompF.append(CompF_temp)
             else:
                 if erg:
-                    CompF.append([synF[-1]*ergCov, np.percentile(synF,16)*ergCov, np.percentile(synF, 84)*ergCov, self._tS_set[self._ti_num[i]]-self._T0, self._tE_set[self._ti_num[i]]-self._T0])
+                    CompF.append([synF[-1]*ergCov, np.percentile(synF,16)*ergCov, np.percentile(synF, 84)*ergCov, self._time_start_set[self._ti_num[i]]-self.trigger, self._time_end_set[self._ti_num[i]]-self.trigger])
                 else:
-                    CompF.append([synF[-1], np.percentile(synF,16), np.percentile(synF, 84), self._tS_set[self._ti_num[i]]-self._T0, self._tE_set[self._ti_num[i]]-self._T0])
+                    CompF.append([synF[-1], np.percentile(synF,16), np.percentile(synF, 84), self._time_start_set[self._ti_num[i]]-self.trigger, self._time_end_set[self._ti_num[i]]-self.trigger])
         
         if filename == '':
             now = datetime.now()
@@ -367,17 +411,17 @@ class Xspec_T:
             return TotalF, CompF
 
 
-    def __reset__(self, newP = []):
+    def __Reset__(self, newP = []):
 
-        self._modNames = XspecModels.ModelList
+        self._model_names = Utilities.models.model_list
 
-        self._modelset = XspecModels.model_xspec_st
+        self._modelset = Utilities.models.model_xspec_st
 
-        self._setP = XspecModels.pars_xspec_st
+        self._setP = Utilities.models.pars_xspec_st
 
         self._newP = newP
             
-    def __prepGBMLLE__(self, ti_num, dtType=1, rspT = True):
+    def __PrepGBMLLE__(self, ti_num, dataType=1, rspType = True):
 
         # Import GBM and LLE dataset
 
@@ -386,104 +430,104 @@ class Xspec_T:
             if det == 'LAT': break
 
             if ti_num == -1:
-                fileAdd = './{}-{}.pha'.format(self._addressToData, det)
-                fileAddB = './{}-{}.bak'.format(self._addressToData, det)
+                pha_file = './{}-{}.pha'.format(self._address_Xspec, det)
+                bak_file = './{}-{}.bak'.format(self._address_Xspec, det)
             else:
-                fileAdd = './{}-{}-{}.pha'.format(self._addressToData, det, ti_num)
-                fileAddB = './{}-{}-{}.bak'.format(self._addressToData, det, ti_num)
+                pha_file = './{}-{}-{}.pha'.format(self._address_Xspec, det, ti_num)
+                bak_file = './{}-{}-{}.bak'.format(self._address_Xspec, det, ti_num)
             
-            if self._dataN == 1:
-                if dtType == 1:
-                    self._AllData(fileAdd)
-                elif dtType == 2:
-                    self._AllData(fileAdd+ '{1}')
+            if self._data_num == 1:
+                if dataType == 1:
+                    self._AllData(pha_file)
+                elif dataType == 2:
+                    self._AllData(pha_file+ '{1}')
             else:
-                if dtType == 1:
-                    self._AllData('{}:{} '.format(self._dataN, self._dataN)+fileAdd)
-                elif dtType== 2:
-                    self._AllData('{}:{} '.format(self._dataN, self._dataN)+fileAdd+ '{1}')
+                if dataType == 1:
+                    self._AllData('{}:{} '.format(self._data_num, self._data_num)+pha_file)
+                elif dataType== 2:
+                    self._AllData('{}:{} '.format(self._data_num, self._data_num)+pha_file+ '{1}')
             
-            with fits.open(fileAdd, mode='update') as PHA:
+            with fits.open(pha_file, mode='update') as PHA:
                 PHA['SPECTRUM'].header['POISSERR'] = True
             
             if det !='LLE':
-                if rspT:
-                    self._AllData(self._dataN).response = './{}-{}.rsp2'.format(self._addressToData, det)
+                if rspType:
+                    self._AllData(self._data_num).response = './{}-{}.rsp2'.format(self._address_Xspec, det)
                 else:
-                    self._AllData(self._dataN).response = './{}-{}.rsp'.format(self._addressToData, det)
+                    self._AllData(self._data_num).response = './{}-{}.rsp'.format(self._address_Xspec, det)
             else:
-                if rspT:
-                    self._AllData(self._dataN).response = './{}-{}.rsp2'.format(self._addressToData, det)
+                if rspType:
+                    self._AllData(self._data_num).response = './{}-{}.rsp2'.format(self._address_Xspec, det)
                 else:
-                    self._AllData(self._dataN).response = './{}-{}.rsp'.format(self._addressToData, det)
+                    self._AllData(self._data_num).response = './{}-{}.rsp'.format(self._address_Xspec, det)
 
             try:
-                with fits.open(fileAddB, mode='update') as BAK:
+                with fits.open(bak_file, mode='update') as BAK:
                     BAK['SPECTRUM'].header['POISSERR'] = False
-                self._AllData(self._dataN).background = './{}-{}-{}.bak'.format(self._addressToData, det, ti_num)
+                self._AllData(self._data_num).background = './{}-{}-{}.bak'.format(self._address_Xspec, det, ti_num)
             except:
-                self._AllData(self._dataN).background = './{}-{}.bak'.format(self._addressToData, det)
+                self._AllData(self._data_num).background = './{}-{}.bak'.format(self._address_Xspec, det)
 
             if det == 'b0' or det == 'b1': 
-                self.__igChannel__(ti_num, det)
+                self.__IgnoreChan__(ti_num, det)
                 
             elif det == 'LLE': 
-                self.__igChannel__(ti_num, det)
+                self.__IgnoreChan__(ti_num, det)
                 
             else: 
-                self.__igChannel__(ti_num, det)
-                self._AllData(self._dataN).ignore("30.-40.")
+                self.__IgnoreChan__(ti_num, det)
+                self._AllData(self._data_num).ignore("30.-40.")
 
             
-            self._dofData+=len(self._AllData(self._dataN).energies)
-            self._groupN.append([det, self._dataN])
-            self._dataN+=1
+            self._dof+=len(self._AllData(self._data_num).energies)
+            self._group_num.append([det, self._data_num])
+            self._data_num+=1
             
     
-    def __prepLAT__(self, ti_num, dtType=1):
+    def __PrepLAT__(self, ti_num, dataType=1):
         
         # Import LAT dataset
 
         if ti_num == -1:
-            fileAdd = './{}-LAT.pha'.format(self._addressToData)
-            fileAddR = './{}-LAT.rsp'.format(self._addressToData)
-            fileAddB = './{}-LAT.bak'.format(self._addressToData)
+            pha_file = './{}-LAT.pha'.format(self._address_Xspec)
+            rsp_file = './{}-LAT.rsp'.format(self._address_Xspec)
+            bak_file = './{}-LAT.bak'.format(self._address_Xspec)
         else:
-            fileAdd = './{}-LAT-{}.pha'.format(self._addressToData, ti_num)
-            fileAddR = './{}-LAT-{}.rsp'.format(self._addressToData, ti_num)
-            fileAddB = './{}-LAT-{}.bak'.format(self._addressToData, ti_num)
+            pha_file = './{}-LAT-{}.pha'.format(self._address_Xspec, ti_num)
+            rsp_file = './{}-LAT-{}.rsp'.format(self._address_Xspec, ti_num)
+            bak_file = './{}-LAT-{}.bak'.format(self._address_Xspec, ti_num)
             
 
-        with fits.open(fileAdd, mode='update') as PHA:
+        with fits.open(pha_file, mode='update') as PHA:
             PHA['SPECTRUM'].header['POISSERR'] = True
 
         # Source file(Neglect background)
-        if self._dataN == 1:
-            self._AllData(fileAdd)
+        if self._data_num == 1:
+            self._AllData(pha_file)
         else:
-            self._AllData('{}:{} '.format(self._dataN, self._dataN)+fileAdd)
+            self._AllData('{}:{} '.format(self._data_num, self._data_num)+pha_file)
 
         # Response file
-        self._AllData(self._dataN).response = fileAddR
+        self._AllData(self._data_num).response = rsp_file
 
         # Background file
-        if dtType==1:
-            with fits.open(fileAddB, mode='update') as BAK:
+        if dataType==1:
+            with fits.open(bak_file, mode='update') as BAK:
                 BAK['SPECTRUM'].header['POISSERR'] = False
-            self._AllData(self._dataN).background = fileAddB
+            self._AllData(self._data_num).background = bak_file
 
-        if hasattr(self, 'eran'):
-            eran = self.eran
-            self._AllData(self._dataN).ignore("**-{:.1f}".format(eran[0]))
-            self._AllData(self._dataN).ignore("{:.1f}-**".format(eran[1]))
+        if hasattr(self, 'energy_range'):
+            energy_range = self.energy_range
+            self._AllData(self._data_num).ignore("**-{:.1f}".format(energy_range[0]))
+            self._AllData(self._data_num).ignore("{:.1f}-**".format(energy_range[1]))
         else:
-            eran = [100000.,100000000.]
+            energy_range = [100000.,100000000.]
 
-        self._dofData+=len(self._AllData(self._dataN).energies)
-        self._groupN.append(["LAT", self._dataN])
-        self._dataN+=1
+        self._dof+=len(self._AllData(self._data_num).energies)
+        self._group_num.append(["LAT", self._data_num])
+        self._data_num+=1
 
-    def __prepXRT__(self, ti_num):
+    def __PrepXRT__(self, ti_num):
 
         # Import XRT dataset
 
@@ -496,134 +540,134 @@ class Xspec_T:
         elif ti_num == 12: txrt = '1_2'
 
         if ti_num == 11:
-            self._AllData('{}:{} 77to180wt.pi'.format(self._dataN, self._dataN))
+            self._AllData('{}:{} 77to180wt.pi'.format(self._data_num, self._data_num))
         else:
-            if self._dataN == 1:
+            if self._data_num == 1:
                 self._AllData('sw00883832000xwtw2po_gti{}_g0_gr1.pi'.format(txrt))
             else:
-                self._AllData('{}:{} sw00883832000xwtw2po_gti{}_g0_gr1.pi'.format(self._dataN, self._dataN, txrt))
+                self._AllData('{}:{} sw00883832000xwtw2po_gti{}_g0_gr1.pi'.format(self._data_num, self._data_num, txrt))
 
-        if hasattr(self, 'eran'):
-            eran = self.eran
-            self._AllData(self._dataN).ignore("**-{:.1f}".format(eran[0]))
-            self._AllData(self._dataN).ignore("{:.1f}-**".format(eran[1]))
-            #self._AllData(self._dataN).ignore("1-{} {}-{}".format(len(np.asarray(AllData(self._dataN).energies)[:,0])-sum(np.asarray(AllData(self._dataN).energies)[:,0]>eran[0]), sum(np.asarray(AllData(self._dataN).energies)[:,0]<eran[1])+1, len(np.asarray(AllData(self._dataN).energies)[:,0])))
+        if hasattr(self, 'energy_range'):
+            energy_range = self.energy_range
+            self._AllData(self._data_num).ignore("**-{:.1f}".format(energy_range[0]))
+            self._AllData(self._data_num).ignore("{:.1f}-**".format(energy_range[1]))
+            #self._AllData(self._data_num).ignore("1-{} {}-{}".format(len(np.asarray(AllData(self._data_num).energies)[:,0])-sum(np.asarray(AllData(self._data_num).energies)[:,0]>energy_range[0]), sum(np.asarray(AllData(self._data_num).energies)[:,0]<energy_range[1])+1, len(np.asarray(AllData(self._data_num).energies)[:,0])))
         else:
-            self._AllData(self._dataN).ignore("**-1.")
-            self._AllData(self._dataN).ignore("10.-**")
+            self._AllData(self._data_num).ignore("**-1.")
+            self._AllData(self._data_num).ignore("10.-**")
 
         os.chdir("../")
-        self._dofData+=len(self._AllData(self._dataN).energies)
-        self._groupN.append(["XRT", self._dataN])
-        self._dataN+=1
+        self._dof+=len(self._AllData(self._data_num).energies)
+        self._group_num.append(["XRT", self._data_num])
+        self._data_num+=1
 
 
-    def __prepBAT__(self, ti_num):
+    def __PrepBAT__(self, ti_num):
 
         # Import BAT dataset
 
-        if self._dataN == 1:
-            self._AllData('./BAT/{}-{}-{}.pha'.format(self._GRBname, 'BAT', ti_num))
+        if self._data_num == 1:
+            self._AllData('./BAT/{}-{}-{}.pha'.format(self.event_name, 'BAT', ti_num))
         else:
-            self._AllData('{}:{} ./BAT/{}-{}-{}.pha'.format(self._dataN, self._dataN,self._GRBname, 'BAT', ti_num))
-        self._AllData(self._dataN).response = './BAT/{}-{}-{}.rsp'.format(self._GRBname, 'BAT', ti_num)
+            self._AllData('{}:{} ./BAT/{}-{}-{}.pha'.format(self._data_num, self._data_num,self.event_name, 'BAT', ti_num))
+        self._AllData(self._data_num).response = './BAT/{}-{}-{}.rsp'.format(self.event_name, 'BAT', ti_num)
         
-        if hasattr(self, 'eran'):
-            eran = self.eran
+        if hasattr(self, 'energy_range'):
+            energy_range = self.energy_range
         else:
-            eran = [15.,150.]
-        self._AllData(self._dataN).ignore("**-{:.1f}".format(eran[0]))
-        self._AllData(self._dataN).ignore("{:.1f}-**".format(eran[1]))
+            energy_range = [15.,150.]
+        self._AllData(self._data_num).ignore("**-{:.1f}".format(energy_range[0]))
+        self._AllData(self._data_num).ignore("{:.1f}-**".format(energy_range[1]))
 
-        self._dofData+=len(self._AllData(self._dataN).energies)
-        self._groupN.append(["BAT", self._dataN])
-        self._dataN+=1
+        self._dof+=len(self._AllData(self._data_num).energies)
+        self._group_num.append(["BAT", self._data_num])
+        self._data_num+=1
     
-    def __igChannel__(self, ti_num, det):
+    def __IgnoreChan__(self, ti_num, det):
 
-        if hasattr(self, 'eran'):
+        if hasattr(self, 'energy_range'):
             if det in ['b0', 'b1']:
-                if self.eran[0]<250.0:
-                    eran =  [250.0, self.eran[1]]
+                if self.energy_range[0]<250.0:
+                    energy_range =  [250.0, self.energy_range[1]]
                 else:
-                    eran = self.eran
+                    energy_range = self.energy_range
             elif det == 'LLE':
-                eran = self.eran
-                #eran = [30000.0, 100000.0]
+                energy_range = self.energy_range
+                #energy_range = [30000.0, 100000.0]
             else:
-                if self.eran[1]>900.0:
-                    eran = [self.eran[0], 900.0]
+                if self.energy_range[1]>900.0:
+                    energy_range = [self.energy_range[0], 900.0]
                 else:
-                    eran = self.eran
+                    energy_range = self.energy_range
         else:
             if det in ['b0', 'b1']:
-                eran =  [260.0, 38000.0]
+                energy_range =  [260.0, 38000.0]
             elif det == 'LLE':
-                eran = [30000.0, 100000.0]
+                energy_range = [30000.0, 100000.0]
             else:
-                eran = [10.0, 900.0]
+                energy_range = [10.0, 900.0]
 
-        self._AllData(self._dataN).ignore("**-{:.1f}".format(eran[0]))
-        self._AllData(self._dataN).ignore("{:.1f}-**".format(eran[1]))
+        self._AllData(self._data_num).ignore("**-{:.1f}".format(energy_range[0]))
+        self._AllData(self._data_num).ignore("{:.1f}-**".format(energy_range[1]))
  
     
-    def __rearrModel__(self, mod_num):
+    def __RearrModel__(self, m_num):
 
         # Input: ["Model_1", "Model_2"]
         # Output: "Model_1+Model_2"
         
         models = ''
-        for mn in self._modelset[mod_num]:
+        for mn in self._modelset[m_num]:
             models=models+'+'+mn
         models=models[1:]
         return models
     
-    def __SelectedDet__(self, only, BAT=False, XRT=False):
+    def __SelectedData__(self, only, BAT=False, XRT=False):
         if only == 'LATonly': Detectors=['LAT']
-        elif only == 'GBMonly': Detectors=self._usedGBM
+        elif only == 'GBMonly': Detectors=self.usedGBM
         elif only == 'LLEonly': Detectors=['LLE']    
         elif only == 'LATLLE': Detectors=['LLE','LAT']
-        elif only == 'GBMLLE': Detectors=self._usedGBM + ['LLE']  
-        elif only == 'GBMLAT': Detectors=self._usedGBM + ['LAT']  
+        elif only == 'GBMLLE': Detectors=self.usedGBM + ['LLE']  
+        elif only == 'GBMLAT': Detectors=self.usedGBM + ['LAT']  
         elif only == 'Swiftonly': Detectors=[]
-        else: Detectors = self._usedGBM+['LLE','LAT'] 
+        else: Detectors = self.usedGBM+['LLE','LAT'] 
         if BAT : Detectors = ['BAT'] + Detectors
         if XRT: Detectors = Detectors+['XRT']
 
         return Detectors
 
-    def __Xspec__(self, mod_num, ti_num, newInit, debug=False, BAT=False, XRT=False, dtType=1, rspT=True):    
+    def __Fitting__(self, m_num, ti_num, newInit, debug=False, BAT=False, XRT=False, dataType=1, rspType=True):    
         from xspec import AllData, AllModels, Xset, Model, Fit, Plot
         
         AllData.clear()
         AllModels.clear()
         Xset.allowPrompting=False
 
-        self.__reset__(newP = self._newP)
+        self.__Reset__(newP = self._newP)
         self._AllData = AllData
         self._AllModels = AllModels
-        self._dataN = 1
-        self._groupN = []
-        self._dofData = 0
+        self._data_num = 1
+        self._group_num = []
+        self._dof = 0
         
-        AllModels.addPyMod(XspecFunctions.bkn2power, XspecFunctions.bkn2pow_Info, 'add')
-        AllModels.addPyMod(XspecFunctions.multiBB, XspecFunctions.multiBB_Info, 'add')
+        AllModels.addPyMod(Utilities.functions.bkn2power, Utilities.functions.bkn2pow_Info, 'add')
+        AllModels.addPyMod(Utilities.functions.multiBB, Utilities.functions.multiBB_Info, 'add')
          
-        self._usedData = self.__SelectedDet__(self._only)
+        self._usedData = self.__SelectedData__(self._only)
         
-        if self._only != 'Swiftonly': self.__prepGBMLLE__(ti_num, dtType=dtType, rspT = rspT)
+        if self._only != 'Swiftonly': self.__PrepGBMLLE__(ti_num, dataType=dataType, rspType = rspType)
 
-        if 'LAT' in self._usedData: self.__prepLAT__(ti_num, dtType=dtType)
+        if 'LAT' in self._usedData: self.__PrepLAT__(ti_num, dataType=dataType)
         
-        if BAT: self.__prepBAT__(ti_num)
+        if BAT: self.__PrepBAT__(ti_num)
 
-        if XRT: self.__prepXRT__(ti_num)
+        if XRT: self.__PrepXRT__(ti_num)
 
 
-        self._usedData = self.__SelectedDet__(self._only, BAT=BAT, XRT=XRT)
+        self._usedData = self.__SelectedData__(self._only, BAT=BAT, XRT=XRT)
 
         # Set modelname
-        models = self.__rearrModel__(mod_num)
+        models = self.__RearrModel__(m_num)
 
         if XRT: 
             models = models+'* TBabs * zTBabs'
@@ -631,20 +675,20 @@ class Xspec_T:
         # Input the model to Xspec
         if newInit and len(self._newP)>0:
             changedInitP = np.asarray(self._newP)
-            if mod_num in changedInitP[:,0]:
-                paramSET = changedInitP[:,1][changedInitP[:,0] == mod_num][0]
+            if m_num in changedInitP[:,0]:
+                paramSET = changedInitP[:,1][changedInitP[:,0] == m_num][0]
                 
             else:
-                paramSET = self._setP[mod_num]
+                paramSET = self._setP[m_num]
         else:
-            paramSET = self._setP[mod_num]
+            paramSET = self._setP[m_num]
 
         Mmanager=Model(models, setPars=paramSET) 
 
-        self._groupN = np.asarray(self._groupN)
+        self._group_num = np.asarray(self._group_num)
 
         if XRT:
-            paramSET.update({Mmanager.nParameters: '{}, 0.'.format(self._redshift)})
+            paramSET.update({Mmanager.nParameters: '{}, 0.'.format(self.redshift)})
             paramSET.update({Mmanager.nParameters-2: '{}, 0.'.format(self._nH)})
             Mmanager=Model(models, setPars=paramSET) 
         
@@ -655,11 +699,11 @@ class Xspec_T:
                 Mmanager.constant.factor.frozen=True
                 #if XRT:
                 #    if self._only != "Swiftonly":
-                #        AllModels(np.int(self._groupN[self._groupN[:,0] == 'XRT'][0][1])).setPars({Mmanager.nParameters:'1.0, 0.1, 0.67, 0.67, 1.5, 1.5'})
+                #        AllModels(np.int(self._group_num[self._group_num[:,0] == 'XRT'][0][1])).setPars({Mmanager.nParameters:'1.0, 0.1, 0.67, 0.67, 1.5, 1.5'})
                 #    else:
                 #        Mmanager.constant.factor.frozen=True
                 if BAT:
-                    AllModels(np.int(self._groupN[self._groupN[:,0] == 'BAT'][0][1])).setPars({Mmanager.nParameters:'1.0, 0.1, 0.67, 0.8, 1.25, 1.5'})
+                    AllModels(np.int(self._group_num[self._group_num[:,0] == 'BAT'][0][1])).setPars({Mmanager.nParameters:'1.0, 0.1, 0.67, 0.8, 1.25, 1.5'})
             else:
                 Mmanager=Model(models, setPars=paramSET)
 
@@ -699,14 +743,14 @@ class Xspec_T:
         else:
             if XRT and BAT:
                 Fit.statMethod = "pgstat"
-                Fit.statMethod = "chi {}".format(int(self._dataN-2))
-                Fit.statMethod = "cstat {}".format(int(self._dataN-1))
+                Fit.statMethod = "chi {}".format(int(self._data_num-2))
+                Fit.statMethod = "cstat {}".format(int(self._data_num-1))
             elif BAT:
                 Fit.statMethod = "pgstat"
-                Fit.statMethod = "chi {}".format(int(self._dataN-1))
+                Fit.statMethod = "chi {}".format(int(self._data_num-1))
             elif XRT:
                 Fit.statMethod = "pgstat"
-                Fit.statMethod = "cstat {}".format(int(self._dataN-1))
+                Fit.statMethod = "cstat {}".format(int(self._data_num-1))
             else:
                 Fit.statMethod = "pgstat"
 		
@@ -724,22 +768,24 @@ class Xspec_T:
         for i in range(Mmanager.nParameters):
             Fit.error('1.0 {}'.format(i+1))
 
-        x, y, m = self.__plotSetting__(debug = debug, BAT=BAT, XRT=XRT)
+        x, y, m = self.__PlotSetting__(debug = debug, BAT=BAT, XRT=XRT)
         
         self._Mmanager = Mmanager
         self._Fit = Fit
 
-        n = self._dofData
-        k = self._dofData-Fit.dof
+        n = self._dof
+        k = self._dof-Fit.dof
     
         bic= Fit.statistic + k*np.log(n)
 
         Statistic = [Fit.statistic, Fit.dof, bic]
 
-        output = {"Model":self.__FitResult__(), "Statistics":Statistic, "PlotX":x, "PlotY":y, "Covariance":Fit.covariance, "PlotModel": m, "TimeInterval":[self._tS_set[ti_num]-self._T0,self._tE_set[ti_num]-self._T0]}
-        return output
-    
-    def __plotSetting__(self, debug = False, BAT=False, XRT=False):
+        output = {"Model":self.__FitResult__(), "TimeInterval":self.time_intervals[ti_num], "Statistics":Statistic, "Covariance":Fit.covariance}
+        dataPoints = {"TimeInterval":self.time_intervals[ti_num], "PlotX":x, "PlotY":y, "PlotModel": m}
+
+        return output, dataPoints
+
+    def __PlotSetting__(self, debug = False, BAT=False, XRT=False):
 
         Plot.commands = ()
         Plot.xLog = True
@@ -748,7 +794,7 @@ class Xspec_T:
         Plot.xAxis="keV"
         #Plot('data', "eemodel")
         
-        for det, groupN in self._groupN:
+        for det, groupN in self._group_num:
             if 'n' in det or 'b' in det:
                 Plot.setRebin(1, 1, groupNum="{}".format(groupN))
             elif det == 'XRT':
@@ -792,19 +838,19 @@ class Xspec_T:
         
         return x, y, m
     
-    def __makeTable__(self, ti_num, clear=False, norm=True, latex=False, Epiv=100):
-        tS = self._tS_set[ti_num]-self._T0
-        tE = self._tE_set[ti_num]-self._T0
+    def __MakeTable__(self, ti_num, clear=False, norm=True, latex=False, Epiv=100):
+        tS = self._time_start_set[ti_num]-self.trigger
+        tE = self._time_end_set[ti_num]-self.trigger
         multi = False
 
         if clear or not(hasattr(self, "_Ftable")):
-            self.__clearTable__()
+            self.__ClearTable__()
             newT = True
         else:
             newT = False
             
 
-        for fresult in self._output["Model"]:
+        for fresult in self._current_output["Model"]:
             self._FparN +=fresult['pars']
         self._FparN = list(set(self._FparN))
         self._FparN.sort()
@@ -812,9 +858,9 @@ class Xspec_T:
         if not(norm): 
             self._FparN.remove('norm')
 
-        for fresult in self._output["Model"]:
+        for fresult in self._current_output["Model"]:
             for par in self._FparN:
-                if not(self._Ftable.has_key(par)):
+                if par not in self._Ftable.keys():
                     self._Ftable.update({par:[]})
                     if not(newT):
                         for i in range(len(self._Ftable['Model'])):
@@ -823,7 +869,7 @@ class Xspec_T:
                     #if par == 'norm' and fresult['name'] == 'powerlaw':
                     #    self._Ftable[par].append(r"{:.3f}$^{{+{:.3f}}}_{{-{:.3f}}}$".format(Ampli[0], Ampli[1]-Ampli[0], Ampli[0]-Ampli[2]))
                     if par == 'ep2' and fresult['name'] == 'grbm*highcut':
-                        Ep2 = self.__foldEtoEp__()
+                        Ep2 = self.__FoldEtoEp__()
                         self._Ftable[par].append(r"{:.3f}$^{{+{:.3f}}}_{{-{:.3f}}}$".format(Ep2[0], Ep2[1]-Ep2[0], Ep2[0]-Ep2[2]))
                     else:
                         if (fresult[par+'_err'][1] == 0.) and (fresult[par+'_err'][0] == 0.) :
@@ -846,12 +892,12 @@ class Xspec_T:
             else:
                 self._Ftable['Model'].append(modelName)
                 self._Ftable['Time'].append(["{:.2f}".format(tS), "{:.2f}".format(tE)])
-                self._Ftable['Stats'].append(["{:.1f}".format(self._output["Statistics"][0]), self._output["Statistics"][1], "{:.1f}".format(self._output["Statistics"][2])])
+                self._Ftable['Stats'].append(["{:.1f}".format(self._current_output["Statistics"][0]), self._current_output["Statistics"][1], "{:.1f}".format(self._current_output["Statistics"][2])])
                 self._Ftable['T_num'].append(ti_num)
 
             multi = True
 
-    def __clearTable__(self):
+    def __ClearTable__(self):
         self._Ftable = {}
         self._FparN = []
         self._Ftable.update({"Model":[]})
@@ -859,7 +905,7 @@ class Xspec_T:
         self._Ftable.update({"Time":[]})
         self._Ftable.update({"T_num":[]})
 
-    def __tableList__(self, latex=False):
+    def __TableList__(self, latex=False):
         tList = []
         for i in range(len(self._Ftable['Model'])):
             temp = []
@@ -875,90 +921,37 @@ class Xspec_T:
             tList.append(temp)
         return tList
 
-    def __calNorm__(self, Epiv):
-        # Input: PL = N*E^(-gamma)
-        # Output: PL = N*(E/100)^(-gamma)
-        parSet = self.__genPars__(sim=10000)
-        Comp = []
-        for parS in parSet:
-            parN = 0
-            for fresult in self._output['Model']:
-                model_name = fresult['name']
-                if model_name == 'powerlaw':
-                    nufnu = ModelCov[model_name](Epiv, *parS[ParNCov[model_name]+parN])
-                    Comp.append(nufnu)
-                parN += len(fresult['pars'])
-        Comp = np.asarray(Comp)
-        return [np.percentile(Comp, 50), np.percentile(Comp, 84),np.percentile(Comp, 16)]
-    
-    def __foldEtoEp__(self):
+    def __FoldEtoEp__(self):
         # Input: E_f
         # Output: Ep = (alpha + 2)*E_f
-        parSet = self.__genPars__(sim=10000)
+        parSet = self.__GeneratePars__(sim=10000)
         Ep2 = (parSet[:,1]+2.)*parSet[:,5]
         return [np.percentile(Ep2, 50), np.percentile(Ep2, 84),np.percentile(Ep2, 16)]
 
 
-    def __makeSED__(self, mod_num, ti_num, noLC = False, saveFig = False, tRan = [], eRan = [50, 300], overlap=True, verbose=False):
-        if not(noLC):
+    def __MakeSED__(self, m_num, ti_num, lc_flag = False, save_flag = False, time_range = [], energy_range = [50, 300], overlap=True, verbose=False):
+        if not(lc_flag):
             fig = plt.figure(figsize=(5,6))
             gs = plt.GridSpec(2, 1, height_ratios=[3, 12])
             gs.update(hspace=0.32)
             topax = fig.add_subplot(gs[0])
 
-            lcData = self.__refinedData__(ecut = eRan)[0]
-
-            self.lightCurve = lcData
-
-            binsDef = [-10]+(self._tS_set-self._T0).tolist()+[self._tE_set[-1]-self._T0]+[self._tE_set[-1]-self._T0+100]
-
-            bk, err = XspecBackground.PolyFit(lcData, t1=self._T90[0], t2=self._T90[1])
-            tb = 0.064
-            if not(binsDef[1:]>=binsDef[:-1]):
-
-                cnts, t = np.histogram(lcData, bins=binsDef)
-                ts = np.asarray(t[1:]-t[:-1])
-                t = centerPt(t)
-                B = np.asarray(bk(t))
-                topax.step(binsDef, [((cnts/ts-B/tb)/1000.)[0]]+((cnts/ts-B/tb)/1000.).tolist(), color='k')
-                
-
-            lcBins = np.arange(self._tS_set[0]-self._T0-10, self._tE_set[-1]-self._T0+100, step=0.064)
-            cnts, t = np.histogram(lcData, bins=lcBins)
-            ts = np.asarray(t[1:]-t[:-1])
-            t = centerPt(t)
-            B = np.asarray(bk(t))
-
-            topax.step(lcBins, [((cnts/ts-B/tb)/1000.)[0]]+((cnts/ts-B/tb)/1000.).tolist(), color='k', alpha=0.5)
-
-            topax.set_xlabel("Time since triggered [s]", fontsize=12)
-            topax.set_ylabel(r"Counts/s", fontsize=12)
-            topax.text(-0.03, 1.05, r"$\times$ 10$^3$", transform=topax.transAxes)
-            topax.text(1, 1.05, "50 - 300 keV", transform=topax.transAxes, ha="right")
-
-            if len(tRan) == 0:
-                topax.set_xlim(self._T90[0]-5, self._T90[1]+10)
-            else:
-                topax.set_xlim(tRan[0], tRan[1])
-
-            topax.axhline(0, ls=":", color='k')
-            topax.axvspan(self._tS_set[ti_num]-self._T0,self._tE_set[ti_num]-self._T0, facecolor='yellow', edgecolor="k", alpha=0.2, lw=1, zorder=-1)
-            topax.axvline(self._T90[0], color='red', lw=1)
-            topax.axvline(self._T90[1], color='red', lw=1)
+            topax = Utilities.lightcurve.LightCurve(self, ax = topax, toi=[self.time_intervals[ti_num][0], self.time_intervals[ti_num][1]])
+            
             gs_base = gridspec.GridSpecFromSubplotSpec(2, 1, subplot_spec=gs[1], height_ratios=[9, 2], hspace=0.05)
             ax = [fig.add_subplot(gs_base[0,:]),fig.add_subplot(gs_base[1,:])]
         else:
             f, ax = plt.subplots(2, 1, figsize=(5,5), gridspec_kw = {'height_ratios':[7, 2]})
-        x = self._output["PlotX"]
-        y = self._output["PlotY"]
-        m = self._output["PlotModel"]
+        x = self._current_data_points["PlotX"]
+        y = self._current_data_points["PlotY"]
+        m = self._current_data_points["PlotModel"]
         newArr = x[:,0].argsort()
         x = x[newArr]
         y = y[newArr]
         m = m[newArr]
 
         #try:
-        modelF, model_compF, etc = self.__modelFlux__(x[:,0], verbose=verbose)
+        modelF, model_compF, etc = self.__ModelFlux__(x[:,0], verbose=verbose)
         ratio = np.sign(y[:,0]-x[:,0]**2.*modelF)*abs(np.asarray(y[:,0]-x[:,0]**2.*modelF)/abs(y[:,1]))
         ratio_err = np.zeros(len(x[:,0]))+1
         #except:
@@ -976,12 +969,12 @@ class Xspec_T:
             E=np.logspace(1, 7, 100)
 
         try:
-            modelF, model_compF, etc = self.__modelFlux__(E, verbose=verbose)
-            ax[0].loglog(E, E**2*modelF, color='k')
+            modelF, model_compF, etc = self.__ModelFlux__(E, verbose=verbose)
+            ax[0].loglog(E, E**2*modelF, color='k', label=Utilities.models.model_list[m_num])
             for modelF in model_compF:
-                ax[0].loglog(E, E**2*modelF, color='k', ls=":", lw=0.7)
+                ax[0].loglog(E, E**2*modelF, color='k', ls=":", lw=0.7, )
         except:
-            ax[0].loglog(x[:,0], m, color='k')
+            ax[0].loglog(x[:,0], m, color='k', label=Utilities.models.model_list[m_num])
         
         if 'XRT' in self._usedData:
             ax[0].set_xlim(0.8, 1e8)
@@ -1003,14 +996,15 @@ class Xspec_T:
         ax[1].axhline(0, color='k', ls=":")
         ax[0].grid()
         ax[1].grid()
+        ax[0].legend()
 
-        if saveFig:
-            plt.savefig("{}-{}.pdf".format(ti_num,mod_num), bbox_inches="tight")
+        if save_flag:
+            plt.save_flag("{}-{}.pdf".format(ti_num,m_num), bbox_inches="tight")
         
         plt.show(block=False)
 
-    def __modelFlux__(self, E, erg=False, butterfly = False, verbose=False, XRT=False):
-        parSet = self.__genPars__(sim=butterfly)
+    def __ModelFlux__(self, E, erg=False, butterfly = False, verbose=False, XRT=False):
+        parSet = self.__GeneratePars__(sim=butterfly)
 
         synF = []
         
@@ -1021,7 +1015,7 @@ class Xspec_T:
             CompF = []
             TotalF = np.zeros(len(E))
             parNum = 0
-            for fresult in self._output['Model']:
+            for fresult in self._current_output['Model']:
                 model_name = fresult['name']
                 if model_name =='TBabs' or model_name == 'zTBabs': continue
 
@@ -1036,9 +1030,7 @@ class Xspec_T:
 
             synF.append(TotalF)
             if verbose :
-                print("{:.1f} %".format(len(synF)*100./len(parSet)))
-                clear_output(wait=True)
-        #if verbose: 
+                print("{:.1f} %".format(len(synF)*100./len(parSet)), end="\r")
         
         TotalF_lu = []
         if butterfly:
@@ -1088,8 +1080,8 @@ class Xspec_T:
                     temp[parN+'_err'] = (-np.asarray(par.error[:-1]))[::-1]
                 elif parN == 'factor':
                     temp['pars'].append(parN)
-                    temp[parN] = self._AllModels(self._dataN-1).constant.factor.values[0]
-                    temp[parN+'_err'] = [self._AllModels(self._dataN-1).constant.factor.values[0]-abs(self._AllModels(self._dataN-1).constant.factor.sigma),self._AllModels(self._dataN-1).constant.factor.values[0]+abs(self._AllModels(self._dataN-1).constant.factor.sigma)]
+                    temp[parN] = self._AllModels(self._data_num-1).constant.factor.values[0]
+                    temp[parN+'_err'] = [self._AllModels(self._data_num-1).constant.factor.values[0]-abs(self._AllModels(self._data_num-1).constant.factor.sigma),self._AllModels(self._data_num-1).constant.factor.values[0]+abs(self._AllModels(self._data_num-1).constant.factor.sigma)]
                 else:
                     temp['pars'].append(parN)
                     temp[parN] = par.values[0]
@@ -1103,11 +1095,11 @@ class Xspec_T:
         return FitOutput
 
     def __MaxEnergy__(self, fileN):
-        DATA = fits.open("./Xspec/{}-mktime-{}.fits".format(self._GRBname,fileN))[1].data
+        DATA = fits.open("./Xspec/{}-mktime-{}.fits".format(self.event_name,fileN))[1].data
         maxE = DATA.field("Energy")
         if len(maxE) == 0:
-            Chan = fits.open("./Xspec/{}-LLE-{}.PHA".format(self._GRBname,fileN))[2].data
-            DATA = fits.open("./Xspec/{}-LLE-{}.PHA".format(self._GRBname,fileN))[1].data.field('Counts')[0]
+            Chan = fits.open("./Xspec/{}-LLE-{}.pha".format(self.event_name,fileN))[2].data
+            DATA = fits.open("./Xspec/{}-LLE-{}.pha".format(self.event_name,fileN))[1].data.field('Counts')[0]
             for i, c in zip(DATA[::-1], Chan[::-1]):
                 if i>0:
                     maxE = c[2]
@@ -1124,7 +1116,7 @@ class Xspec_T:
         temp=0
         for matSize in range(20):
             temp+=matSize
-            if np.size(self._output['Covariance']) == temp:
+            if np.size(self._current_output['Covariance']) == temp:
                 break
 
         covReshape = np.zeros(shape=(matSize,matSize))
@@ -1133,18 +1125,18 @@ class Xspec_T:
         for j in range(matSize):
             for i in range(matSize):
                 if i <= j and covReshape[i][j] == 0: 
-                    covReshape[i][j]=self._output['Covariance'][k]
-                    covReshape[j][i]=self._output['Covariance'][k]
+                    covReshape[i][j]=self._current_output['Covariance'][k]
+                    covReshape[j][i]=self._current_output['Covariance'][k]
                     k+=1
                     continue
                 continue
 
         return covReshape
 
-    def __genPars__(self, runs = 10000, sim=False):
+    def __GeneratePars__(self, runs = 10000, sim=False):
         mean = []
         fixed_mean = []
-        for pars in self._output['Model']:
+        for pars in self._current_output['Model']:
             for par in pars['pars']:
                 if hasattr(self, 'sync'):
                     if self.sync:
@@ -1181,37 +1173,4 @@ class Xspec_T:
             parSet = np.asarray([mean])
 
         return parSet
-
-
-    def __refinedData__(self, ecut=[50, 300]):
-            
-        lcData = []
-        for i in range(np.size(ecut)-1):
-            lcData.append([])
-
-        for uG, i in zip(self._usedGBM, range(np.size(self._usedGBM))):
-
-            with fits.open(glob.glob(self._address+"/GBM/*_"+uG+"_*.fit")[0]) as sourceFile:
-
-                if 'n' in uG:
-                    cut = (sourceFile[1].data.field('E_MIN')>10)*(sourceFile[1].data.field('E_MAX')<1000)
-                elif 'b' in uG:
-                    cut = (sourceFile[1].data.field('E_MIN')>200)*(sourceFile[1].data.field('E_MAX')<40000)
-
-                ecut_temp=[]    
-                for elim in ecut:
-                    ecut_temp.append(128-sum(sourceFile[1].data.field('E_MIN')>elim))
-
-                dataT = sourceFile[2].data.field('TIME')-self._T0
-                dataChannel = sourceFile[2].data.field('PHA')
-
-                for j in range(np.size(ecut_temp)-1): 
-                    lcData_temp=np.asarray(dataT)*np.asarray(dataChannel>=ecut_temp[j])*np.asarray(dataChannel<=ecut_temp[j+1])*np.asarray(dataT>=-300)*np.asarray(dataT<=300)
-                    lcData_temp = lcData_temp[lcData_temp != 0]
-                    lcData[j]=lcData[j]+lcData_temp.tolist()
-
-        for k in range(np.size(ecut)-1):
-            lcData[k]=np.asarray(lcData[k])
-            
-        return np.asarray(lcData)
 

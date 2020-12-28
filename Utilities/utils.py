@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-def centerPt(t):
+def center_pt(t):
     return (t[1:]+t[:-1])/2.
 
 def linear(T, alpha, T0):
