@@ -1,0 +1,24 @@
+
+# data and data error colors
+DATA_COLOR='#394264'
+DATA_ERROR_COLOR='dimgrey'
+DATA_ERROR_ALPHA=0.5
+DATA_SELECTED_COLOR='#9a4e0e'
+DATA_SELECTED_ALPHA=0.2
+DATA_ERROR_SELECTED_COLOR='#9a4e0e'
+DATA_ERROR_SELECTED_ALPHA=0.5
+BINNING_SELECTED_COLOR='darkgreen'
+BINNING_SELECTED_ALPHA=0.2
+
+# background and background error colors
+BKGD_COLOR='firebrick'
+BKGD_ALPHA=0.85
+BKGD_WIDTH=0.75
+BKGD_ERROR_ALPHA=0.50
+
+# plotting font
+PLOTFONT=None
+PLOTFONTSIZE=10
+
+# tick format settings
+

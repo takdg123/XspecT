@@ -143,16 +143,18 @@ class EventInfo(object):
             np.save("./"+self._address_Xspec+"-ti", self.time_intervals)
         else:
             self.time_intervals = np.load("./"+self._address_Xspec+"-ti.npy")
-
-            if self.toi in self.time_intervals:
-                for i in range(len(self.time_intervals)):
-                    if sum(self.toi == self.time_intervals[i]) == 3:
-                        self._ti_num = i
-            else:
+            
+            self._ti_num = None
+            
+            for i in range(len(self.time_intervals)):
+                if sum(self.toi == self.time_intervals[i]) == 3:
+                    self._ti_num = i
+            
+            if self._ti_num == None:
                 self.time_intervals = self.time_intervals.tolist()
                 self.time_intervals.append(self.toi)
                 np.save("./"+self._address_Xspec+"-ti", self.time_intervals)
-                self.time_intervals = np.asarray(time_intervals)
+                self.time_intervals = np.asarray(self.time_intervals)
                 self._ti_num = len(self.time_intervals)-1                
 
         self._m_num = 0

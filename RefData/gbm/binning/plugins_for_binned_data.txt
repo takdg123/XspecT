@@ -1,0 +1,6 @@
+Temporal Resolution, binned.rebin_by_time
+Combine By Factor, binned.combine_by_factor
+Combine Into Single Bin, binned.combine_into_one
+Signal-to-Noise, binned.rebin_by_snr
+By Edge Index, binned.rebin_by_edge_index
+By Time Edge, binned.rebin_by_edge

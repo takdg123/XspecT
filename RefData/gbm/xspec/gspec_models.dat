@@ -1,0 +1,224 @@
+# Power Law
+powerlaw       1  0.         1.e20           C_powerLaw    add  0
+PhoIndex ""    1.    -3.    -2.     9.        10.       0.01
+
+# Broken Power Law
+bknpower       3   -1.e20     1.e20          C_brokenPowerLaw  add  0
+PhoIndx1 ""    1.    -3.    -2.     9.        10.       0.01
+BreakE  keV     5.    0.      1.e-2  1.e6      1.e6      0.01
+PhoIndx2 ""    2.    -3.    -2.     9.        10.       0.01
+
+# Broken Power Law w/ 2 Breaks
+bkn2pow        5   -1.e20     1.e20          C_broken2PowerLaw  add  0
+PhoIndx1 ""    1.    -3.    -2.     9.        10.       0.01
+BreakE1  keV    5.    0.      1.e-2  1.e6      1.e6      0.01
+PhoIndx2 ""    2.    -3.    -2.     9.        10.       0.01
+BreakE2  keV   10.    0.      1.e-2  1.e6      1.e6      0.01
+PhoIndx3 ""    3.    -3.    -2.     9.        10.       0.01
+
+# Band (Epeak)
+ngrbep  3  1.0     1e20            ngrbep add  0
+alpha ""     -1.   -10.    -3.   1.       2.       0.1
+beta  ""     -2.   -10.    -5.   1.       2.       0.1
+Epeak   keV     300.    10.    0.   1e4     1e4       10.
+
+# Band (E0)
+grbm           3   1.e-20     1.e+20         xsgrbm    add  0
+alpha   ""     -1.   -10.    -3.     +2.       +5.       1.e-2
+beta    ""     -2.   -10.    -5.     +2.      +10.       1.e-2
+tem     keV     +300. +10.    +50.  +1000.  +10000.       1.e+1
+
+# Comptonized
+cplep  2  1.0     1e20            C_cplep add  0
+alpha ""     -1.   -10.    -3.   1.       2.       0.1
+Epeak   keV     100.    10.    10.   1e4     1e4       10.
+
+# Cut-off Power Law
+cutoffpl       2   1.e-20     1.e20          C_cutoffPowerLaw    add  0
+PhoIndex ""    1.    -3.    -2.     9.        10.       0.01
+HighECut keV   +200. +10.    +50.  +1000.  +10000.       1.e+1
+
+# Bremsstrahlung
+bremss         1   1.e-20     1.e20          xsbrms    add  0
+kT      keV     7.0   1.e-4  1.e-4   100.      200.      0.05
+
+# Blackbody
+bbody          1   1.e-20     1.e20          xsblbd    add  0
+kT      keV     3.0   1.e-4   1.e-2   100.      200.      0.01
+
+# Blackbody (radiative)
+bbodyrad       1   1.e-20     1.e20          xsbbrd    add  0
+kT      keV     3.    1e-4    1e-3    100       200       .01
+
+# Photon Flux
+cpflux       3  0.         1.e20             C_cpflux   con 0
+Emin    "keV"     0.5   0.0   0.0    1e6      1e6          -0.1
+Emax    "keV"    10.0   0.0   0.0    1e6      1e6          -0.1
+Flux    ""     1.0   0.0   0.0    1e10     1e10          0.01
+
+# Log-Parabola (Epeak)
+eplogpar  2  0.   1.e20      eplogpar   add 0
+Ep  keV     .1   1.e-10    1.e-6    1.e2       1.e4     0.01
+beta ""    0.2    -4.   -4.       4.         4.       0.01
+
+# Log-Parabola
+logpar  3  0.   1.e20      logpar   add 0
+alpha  ""   1.5     0.    0.       4.         4.       0.01
+beta   ""    0.2    -4.   -4.       4.         4.       0.01
+*pivotE keV 1.0 1.0 1.0 1.0 1.0 0.01
+
+# Gaussian Line
+gaussian       2   0.         1.e20          C_gaussianLine    add  0
+LineE   keV     6.5   0.      0.      1.e6      1.e6      0.05
+Sigma   keV     0.1   0.      0.      10.       20.       0.05
+
+# Gaussian Line (wavelength)
+agauss         2   0.         1.e20          C_agauss  add  0
+LineE   A      10.0   0.      0.      1.e6      1.e6      0.01
+Sigma   A      1.0    0.      0.      1.e6      1.e6      0.01
+
+# Lorentzian Line
+lorentz        2  0.         1.e20           C_lorentzianLine  add  0
+LineE   keV     6.5   0.      0.      1.e6      1.e6      0.05
+Width   keV     0.1   0.      0.      10.       20.       0.05
+
+# Step (conv. w/ Gaussian)
+step           2  0.         1.e20           xsstep    add  0
+Energy  keV     6.5   0.      0.      100.      100.      0.05
+Sigma   keV     0.1   0.      0.      10.       20.       0.05
+
+# Low-energy Cut-off
+expabs         1   0.         1.e20          xsabsc    mul  0
+LowECut keV     2.    0.      0.      100.      200.      .01
+
+# High-energy Cut-off
+highecut       2  0.         1.e20           xshecu    mul  0
+cutoffE keV     10.   1.e-4   1.e-2   1.e6     1.e6       0.01
+foldE   keV     15.   1.e-4   1.e-2   1.e6     1.e6       0.01
+
+# He I Absorption
+heilin        3   0.01       1.e20           xsphei   mul 0
+nHeI     10^22  1.e-5 0.0     0.0     1.e6      1.e6      1.e-7 
+b        km/s   10.0  1.0     1.0     1.e5      1.e6      1.e-0
+z        ""    0.0  -1.e-3  -1.e-3   1.e5      1.e5      1.e-6
+
+# Exponential Factor
+expfac         3   0.         1.e20          xsexp     mul  0
+Ampl     ""    1.    0.      0.      1.e5     1.e6       0.01
+Factor   ""    1.    0.      0.      1.e5     1.e6       0.01
+StartE  keV     0.5   0.      0.      1.e5     1.e6      -0.01
+
+# Relativistic Matter Comptonization
+bmc            3   0.         1.e20          xsbmc     add  0
+kT      keV    1.    1.e-4   1.e-2   100.      200.      0.05
+alpha   ""    1.    1.e-4   1.e-2   4.0       6.0       0.01
+log_A  ""    0.0   -8.0    -6.0    6.0       8.0       0.01 
+
+# Comptonized Blackbody
+compbb        3   1.e-20     1.e20          compbb    add   0
+kT      keV     1.0   1.e-4   1.e-2   100.      200.      0.01
+kTe     keV    50     1.    1.      200.       200.    -1.
+tau     ""    0.1    0.0     0.0      10.       10.      0.001
+
+# Thermal Bulk Comptonization
+comptb         6  1.e-20     1.e20           c_xscomptb  add  0
+kTs     keV     1      0.1    0.1      10       10      0.1
+gamma   ""     3      1      1        10       10      -0.01
+alpha   ""     2      0      0        400      400     0.01
+delta   ""     20     0      0        200      200     0.01
+kTe     keV     5      0.2    0.2      2000     2000    0.1
+log_A  ""     0      -8     -8       8        8       0.01
+
+# Compton Scattering
+cabs           1  0.         1.e20           xscabs    mul  0
+nH      10^22   1.    0.0     0.0     1.e5      1.e6      1.e-3
+
+# Cyclotron Absorption
+cyclabs        5  0.         1.e20           xscycl    mul  0
+Depth0   ""    2.0   0.      0.      100.      100.      0.01
+E0      keV     30.0  1.0     1.0     100.      100.      0.01
+Width0  keV     10.0  1.0     1.0     100.      100.      -0.01
+Depth2   ""    0.0   0.      0.      100.      100.      -0.01
+Width2  keV     20.0  1.0     1.0     100.      100.      -0.01
+
+# Absorption Edge
+edge           2   1.e-20     1.e20          xsedge    mul  0
+edgeE   keV     7.0   0.      0.      100.      100.      0.05
+MaxTau   ""    1.    0.      0.      5.        10.       0.01
+
+# Gaussian Absorption Line
+gabs           3   0.         1.e20          C_gaussianAbsorptionLine  mul 0
+LineE    keV     1.0   0.      0.      1.e6      1.e6      0.05
+Sigma    keV     0.01  0.      0.      10.       20.       0.05
+Strength ""     1.0   0.      0.      1.e6      1.e6      0.05
+
+# Notch Absorption
+notch          3   0.         1.e20          xsntch    mul  0
+LineE   keV     3.5   0.      0.      20.       20.       .05
+Width   keV     1.    0.      0.      20.       20.       .02
+CvrFract ""    1.    0.      0.      1.        1.        -.005
+
+# Gaussian Line (wavelength w/ redshift)
+zagauss        3   0.         1.e20          C_zagauss  add  0
+LineE   A      10.0   0.      0.      1.e6      1.e6      0.01
+Sigma   A      1.0    0.      0.      1.e6      1.e6      0.01
+Redshift ""    0.   -0.999  -0.999   10.       10.       -0.01
+
+# Blackbody (w/ redshift)
+zbbody         2   1.e-20     1.e20          xszbod    add  0
+kT      keV     3.0   1.e-4   1.e-2   100.      200.      0.01
+Redshift ""    0.   -0.999  -0.999   10.       10.       -0.01
+
+# Bremsstrahlung (w/ redshift)
+zbremss        2   1.e-20     1.e20          xszbrm    add  0
+kT      keV     7.0   1.e-4  1.e-4   100.      200.      0.05
+Redshift ""    0.   -0.999  -0.999   10.       10.       -0.01
+
+# Gaussian Line (w/ redshift)
+zgauss         3   0.         1.e20          C_xszgau    add  0
+LineE   keV     6.5   0.      0.      1.e6      1.e6      0.05
+Sigma   keV     0.1   0.      0.      10.       20.       0.05
+Redshift ""    0.   -0.999  -0.999   10.       10.       -0.01
+
+# Power Law (w/ redshift)
+zpowerlw       2  0.         1.e20           C_zpowerLaw    add  0
+PhoIndex ""    1.    -3.    -2.     9.       10.       0.01
+Redshift ""    0.   -0.999  -0.999   10.       10.       -0.01
+
+# Redshift Additive
+zashift   1      0.0        1.0e20           C_zashift con  0
+Redshift ""    0.   -0.999  -0.999   10.       10.       -0.01
+
+# Redshift Multiplicative
+zmshift   1      0.0        1.0e20           C_zmshift con  0
+Redshift ""    0.   -0.999  -0.999   10.       10.       -0.01
+
+# Constant
+constant       1  0.         1.e20           xscnst    mul  0
+factor   ""    1.    0.0     0.0     1.e10     1.e10     1.e-2
+
+# Component Flux
+cflux        3  0.         1.e20             C_cflux   con 0
+Emin    "keV"     0.5   0.0   0.0    1e6      1e6          -0.1
+Emax    "keV"    10.0   0.0   0.0    1e6      1e6          -0.1
+lg10Flux "cgs"  -12.0  -100.0 -100.0 100.     100.          0.01
+
+# Component Luminosity
+clumin       4  0.         1.e20             C_clumin   con 0
+Emin    "keV"     0.5   0.0   0.0    1e6      1e6          -0.1
+Emax    "keV"    10.0   0.0   0.0    1e6      1e6          -0.1
+Redshift ""     0.   -0.999  -0.999   10.       10.       -0.01
+lg10Lum  "cgs"  40.0  -100.0 -100.0 100.     100.          0.01
+
+# Gaussian Smoothing
+gsmooth        2  0.         1.e20           C_xsgsmt    con  0
+Sig_6keV keV    1.00  0.0     0.0       10.     20.        .05
+Index    ""    0.00  -1.     -1.       1.      1.        -0.01
+
+# Comptonized (flux normed)
+cplflux  5  1.0     1e20            C_cplflux add  0
+alpha ""     -1.   -10.    -3.   1.       2.       .1
+Epeak   keV     100.    10.    10.   1e4     1e4       10.
+enorm   keV     100.0  1.0    1.0   1e3      1e3       -0.01
+Emin    keV     20.    0.0    0.0   2e4    2e4     -0.01
+Emax    keV     10000.    0.0    0.0   2e4    2e4     -0.01

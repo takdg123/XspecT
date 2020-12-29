@@ -1,0 +1,6 @@
+Temporal Resolution, unbinned.bin_by_time
+Combine By Factor, unbinned.combine_by_factor
+Combine Into Single Bin, unbinned.combine_into_one
+Signal-to-Noise, unbinned.bin_by_snr
+By Time Edge, unbinned.bin_by_edges
+Time To Spill, unbinned.time_to_spill
