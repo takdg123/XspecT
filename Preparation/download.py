@@ -17,17 +17,10 @@ class DownloadData(EventInfo):
         super().__init__(grb, **kwargs)
         self.verbose=verbose
 
-    def MakeDir(self):
-        os.system("mkdir {}".format(self.full_name))
-        os.system("mkdir {}/GBM".format(self.full_name))
-        os.system("mkdir {}/Xspec".format(self.full_name))
-        os.system("mkdir {}/LAT".format(self.full_name))
-    
     def DownloadAll(self, gbm=True, lle=False, lat=True, forcedDwn=False):
 
         self.forcedDwn=forcedDwn
         if gbm:
-            DownloadGBMcat(self.full_name, verbose=self.verbose)
             self.DownloadGBM()
         if lle:
             self.DownloadLLE()
@@ -76,7 +69,8 @@ class DownloadData(EventInfo):
         rspV = version
         
         if self.verbose:
-            print("GRB{} rsp info: version (TTE:{}, CSPEC:{}, RSP:{}, rsp2: {})".format(self.full_name, tteV, cspecV, rspV, rsp2Flag))
+            print("GRB{} data version: TTE ({}), CSPEC ({}), RSP ({})".format(self.full_name, tteV, cspecV, rspV))
+            if rsp2Flag: print("                    Use rsp2 file")
 
         for gbm in dwDet:
             
@@ -104,22 +98,38 @@ class DownloadData(EventInfo):
 
                 
     def DownloadLLE(self):
-        for version in range(10):
-            version=9-version
+
+        try:
+            urllib.request.urlretrieve("{}/20{}/bn{}/current/".format(self._LAT_download_address,self.yr,self.full_name))
+        except:
+            print("LLE data folder does not exist. Check {}/20{}/bn{}/current/".format(self._LAT_download_address,self.yr,self.full_name))
+            return
+            
+        for version in range(12):
+            version=11-version
+
+            if version < 10:
+                version = "0"+str(version)
+
             try:
-                urllib.request.urlopen(urllib.request.Request("{}/20{}/bn{}/current/gll_selected_bn{}_v0{}.fit".format(self._LAT_download_address,self.yr,self.full_name,self.full_name,version)))
+                urllib.request.urlopen(urllib.request.Request("{}/20{}/bn{}/current/gll_selected_bn{}_v{}.fit".format(self._LAT_download_address,self.yr,self.full_name,self.full_name,version)))
                 break
             except:
                 continue
 
         # tte file
-        dwUrl = "{}/20{}/bn{}/current/gll_selected_bn{}_v0{}.fit".format(self._LAT_download_address,self.yr,self.full_name,self.full_name,version)
-        dwFile = "./{}/LAT/{}-LLE.fit".format(self.full_name,self.event_name)
+        dwUrl = "{}/20{}/bn{}/current/gll_selected_bn{}_v{}.fit".format(self._LAT_download_address,self.yr,self.full_name,self.full_name,version)
+        dwFile = "./{}/LAT/gll_lle_bn{}_v00.fit".format(self.full_name,self.full_name)
+        self.__DownloadProcess__(dwUrl, dwFile)
+        
+        # pha file
+        dwUrl = "{}/20{}/bn{}/current/gll_cspec_bn{}_v{}.pha".format(self._LAT_download_address,self.yr,self.full_name,self.full_name,version)
+        dwFile = "./{}/LAT/glg_cspec_ll_bn{}_v00.pha".format(self.full_name,self.full_name)
         self.__DownloadProcess__(dwUrl, dwFile)
 
         # rsp file
-        dwUrl = "{}/20{}/bn{}/current/gll_cspec_bn{}_v0{}.rsp".format(self._LAT_download_address,self.yr,self.full_name,self.full_name,version)
-        dwFile = "./{}/LAT/{}-LLE.rsp".format(self.full_name,self.event_name)
+        dwUrl = "{}/20{}/bn{}/current/gll_cspec_bn{}_v{}.rsp".format(self._LAT_download_address,self.yr,self.full_name,self.full_name,version)
+        dwFile = "./{}/LAT/glg_cspec_ll_bn{}_v00.rsp".format(self.full_name,self.full_name)
         self.__DownloadProcess__(dwUrl, dwFile)
 
         if self.verbose: print("Completed (LLE)")

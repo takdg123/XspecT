@@ -11,35 +11,44 @@ from ..info import EventInfo
 
 class PrepGBM(EventInfo):
     
-    def __init__(self, grb, tRan = [None, None], forcedGen = False, verbose=False, plotting=False, **kwargs):
+    def __init__(self, grb, tRan = [None, None], forcedGen = False, allBins = False, verbose=False, plotting=False, **kwargs):
  
 
         super().__init__(grb, tRan = tRan, **kwargs)
         self.verbose=verbose
         self.forcedGen=forcedGen
+        self.current_dir = os.path.abspath('.')
 
-        self.Preparation(plotting=plotting)
+        if allBins and hasattr(self, "time_intervals"):
+
+            for i in range(len(self.time_intervals)):
+                self._ti_num = i
+                self.toi = [self.time_intervals[self._ti_num][0], self.time_intervals[self._ti_num][1]]
+            
+                self.Preparation(plotting=plotting)
+        else:
+            self.Preparation(plotting=plotting)
         
     def Preparation(self, plotting=False):
         for det in self.usedGBM:
 
-            file_flag = os.path.isfile('./{}-{}-{}.bak'.format(self._address_Xspec, det, self._ti_num))
+            file_flag = os.path.isfile(self.current_dir+'/{}-{}-{}.bak'.format(self._address_Xspec, det, self._ti_num))
             if file_flag:
                 if self.forcedGen:
-                    os.system("rm ./{}/Xspec/glg_cspec_{}_bn{}_xspec_v00.bak".format(self.full_name, det, self.full_name))
+                    os.system("rm {}/{}/Xspec/glg_cspec_{}_bn{}_xspec_v00.bak".format(self.current_dir, self.full_name, det, self.full_name))
                 else:
-                    print("GBM files (name: {}, time interval: {:.3f}-{:.3f}) already exist.".format(self.full_name, self.toi[0], self.toi[1]))
-                    return
+                    print("GBM files (name: {}, time interval: {:.3f}-{:.3f}, ti_num: {}) already exist.".format(self.full_name, self.toi[0], self.toi[1], self._ti_num))
+                    continue
             
             data = gspec.GspecManager()
 
             forder, maxt = self.BackgroundFit(det, plotting=plotting)
 
-            detName = data.add_data("./{}/GBM/glg_cspec_{}_bn{}_v00.pha".format(self.full_name, det, self.full_name))
+            detName = data.add_data(self.current_dir+"/{}/GBM/glg_cspec_{}_bn{}_v00.pha".format(self.full_name, det, self.full_name))
             try:
-                data.add_response(detName,"./{}/GBM/glg_cspec_{}_bn{}_v00.rsp2".format(self.full_name, det, self.full_name))
+                data.add_response(detName,self.current_dir+"/{}/GBM/glg_cspec_{}_bn{}_v00.rsp2".format(self.full_name, det, self.full_name))
             except:
-                data.add_response(detName,"./{}/GBM/glg_cspec_{}_bn{}_v00.rsp".format(self.full_name, det, self.full_name))
+                data.add_response(detName,self.current_dir+"/{}/GBM/glg_cspec_{}_bn{}_v00.rsp".format(self.full_name, det, self.full_name))
             if 'n' in det:
                 data.energy_selection(detName, data.cspec_nai_default)
             elif 'b' in det:
@@ -52,11 +61,11 @@ class PrepGBM(EventInfo):
 
             data.source_selection(detName, [self.toi[0], self.toi[1]])
             data.add_background(detName, [[-100, -10], [self.toi[1]+min(50, max(10, maxt-50)), self.toi[1]+maxt]],'Polynomial', forder)
-            data.export_to_xspec(detName, directory='./{}/Xspec/'.format(self.full_name))
+            data.export_to_xspec(detName, directory=self.current_dir+'/{}/Xspec/'.format(self.full_name))
             
-            os.system('mv ./{}/Xspec/glg_cspec_{}_bn{}_xspec_v00.bak ./{}-{}-{}.bak'.format(self.full_name, det, self.full_name, self._address_Xspec, det, self._ti_num))
-            os.system('mv ./{}/Xspec/glg_cspec_{}_bn{}_xspec_v00.pha ./{}-{}-{}.pha'.format(self.full_name, det, self.full_name, self._address_Xspec, det, self._ti_num))
-            os.system('mv ./{}/Xspec/glg_cspec_{}_bn{}_xspec_v00.rsp ./{}-{}-{}.rsp'.format(self.full_name, det, self.full_name, self._address_Xspec, det, self._ti_num))
+            os.system('mv {}/{}/Xspec/glg_cspec_{}_bn{}_xspec_v00.bak {}/{}-{}-{}.bak'.format(self.current_dir,self.full_name, det, self.full_name, self.current_dir, self._address_Xspec, det, self._ti_num))
+            os.system('mv {}/{}/Xspec/glg_cspec_{}_bn{}_xspec_v00.pha {}/{}-{}-{}.pha'.format(self.current_dir,self.full_name, det, self.full_name, self.current_dir, self._address_Xspec, det, self._ti_num))
+            os.system('mv {}/{}/Xspec/glg_cspec_{}_bn{}_xspec_v00.rsp {}/{}-{}-{}.rsp'.format(self.current_dir,self.full_name, det, self.full_name, self.current_dir, self._address_Xspec, det, self._ti_num))
             
             if self.verbose:
                 print("A photon-event file is created: ./{}-{}-{}.pha".format(self._address_Xspec, det, self._ti_num))
@@ -68,8 +77,8 @@ class PrepGBM(EventInfo):
                 phafile[1].header['FILENAME'] = '{}-{}-{}.pha'.format(self.event_name, det, self._ti_num)
                 phafile[2].header['FILENAME'] = '{}-{}-{}.pha'.format(self.event_name, det, self._ti_num)
                 phafile[3].header['FILENAME'] = '{}-{}-{}.pha'.format(self.event_name, det, self._ti_num)
-                phafile[2].header['RESPFILE'] = './{}-{}-{}.rsp'.format(self._address_Xspec, det, self._ti_num)
-                phafile[2].header['BACKFILE'] = './{}-{}-{}.bak'.format(self._address_Xspec, det, self._ti_num)
+                phafile[2].header['RESPFILE'] = self.current_dir+'/{}-{}-{}.rsp'.format(self._address_Xspec, det, self._ti_num)
+                phafile[2].header['BACKFILE'] = self.current_dir+'/{}-{}-{}.bak'.format(self._address_Xspec, det, self._ti_num)
 
             with fits.open('./{}-{}-{}.bak'.format(self._address_Xspec, det, self._ti_num), mode='update') as backfile:
                 backfile[0].header['FILENAME'] = '{}-{}-{}.bak'.format(self.event_name, det, self._ti_num)
@@ -90,9 +99,14 @@ class PrepGBM(EventInfo):
             mytot = 0
             for i in range(16, 120):
                 
-                y = fits.open("./{}/GBM/glg_cspec_{}_bn{}_v00.pha".format(self.full_name, det, self.full_name))[2].data['Counts'][:,i]/fits.open("./{}/GBM/glg_cspec_{}_bn{}_v00.pha".format(self.full_name, det, self.full_name))[2].data['Exposure']
-                x = fits.open("./{}/GBM/glg_cspec_{}_bn{}_v00.pha".format(self.full_name, det, self.full_name))[2].data['Time']-self.trigger
+                cnts =fits.open(self.current_dir+"/{}/GBM/glg_cspec_{}_bn{}_v00.pha".format(self.full_name, det, self.full_name))[2].data['Counts'][:,i]
+                exposure = fits.open(self.current_dir+"/{}/GBM/glg_cspec_{}_bn{}_v00.pha".format(self.full_name, det, self.full_name))[2].data['Exposure']
+                y = cnts[exposure>0]/exposure[exposure>0]
+                
+                x = fits.open(self.current_dir+"/{}/GBM/glg_cspec_{}_bn{}_v00.pha".format(self.full_name, det, self.full_name))[2].data['Time'][exposure>0]-self.trigger
+                
                 ytot +=y
+                
                 bakRan = ((x>-200) * (x<-50))  + ((x>(self.toi[1]+50))  * (x<(self.toi[1]+300)))
                     
                 xbak = x[bakRan]
@@ -120,6 +134,7 @@ class PrepGBM(EventInfo):
             else:
                 forder = 1
         
+        
         if plotting or self.verbose > 1:
             f, ax = plt.subplots(1,2, figsize=(12, 5))
             ax[0].plot(x, ytot)
@@ -137,7 +152,7 @@ class PrepGBM(EventInfo):
             ax[1].set_ylabel(r"$\chi^2$")
             ax[1].axhline(1, ls=':', color='gray')
             ax[1].set_title("{}, {}-order polynomial fit".format(det, forder))
-            plt.savefig("./{}/GBM/{}_bk_chisq.png".format(self.full_name, det))
+            plt.savefig(self.current_dir+"/{}/GBM/{}_bk_chisq.png".format(self.full_name, det))
             plt.show(block=False)
         
         

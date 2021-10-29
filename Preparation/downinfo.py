@@ -2,6 +2,7 @@ import os
 import urllib
 
 def DownloadGBMcat(grb, verbose=True, scat=True, bcat=True):
+    grb = str(grb)
     fullname = grb
     name = grb[:6]
     yr = grb[:2]
@@ -32,7 +33,8 @@ def DownloadGBMcat(grb, verbose=True, scat=True, bcat=True):
 
             try:
                 urllib.request.urlretrieve("{}/20{}/bn{}/current/glg_scat_all_bn{}_flnc_plaw_v0{}.fit".format(address,yr,fullname,fullname,version), "./{}/GBM/{}-scat.fit".format(fullname,name))
+                if verbose: print("Downloading scat is completed.")
             except:
                 print("scat file does not exist.")
-            if verbose: print("Downloading scat is completed.")
+            
 

@@ -9,8 +9,8 @@ class srcList:
 		if not fileCheck(sources): #check that file exists
 			print("Error:  %s not found."%sources)
 			return
-		if fileCheck(out):
-			print('Warning: %s already exists, file will be overwritten if you proceed with makeModel.'%out)
+		#if fileCheck(out):
+			#print('Warning: %s already exists, file will be overwritten if you proceed with makeModel.'%out)
 		self.srcs=sources
 		self.out=out
 		self.roi=getPos(ft1)
@@ -40,7 +40,7 @@ class srcList:
 	#makeRegion (bool) -- optional, flag to also generate ds9 region file
 	#GIndexFree (bool) -- optional, the Galactic diffuse is given a power-law spectral shape but the by default the index is frozen, setting this flag to True allows that to be free for additional freedom in diffuse fit
 	#ApplyEDisp (boo) -- optional, flag to apply energy dispersion to free sources (except diffuse backgrounds) default is False.
-	def makeModel(self,GDfile="$(FERMI_DIR)/refdata/fermi/galdiffuse/gll_iem_v07.fits",GDname='gll_iem_v07',ISOfile="$(FERMI_DIR)/refdata/fermi/galdiffuse/iso_P8R3_SOURCE_V3_v1.txt",ISOname='iso_P8R3_SOURCE_V3_v1',normsOnly=False,extDir='',radLim=-1,maxRad=None,ExtraRad=10,sigFree=5,varFree=True,psForce=False,E2CAT=False,makeRegion=True,GIndexFree=False,wd='',oldNames=False,GRB=False):
+	def makeModel(self,GDfile="$(FERMI_DIR)/refdata/fermi/galdiffuse/gll_iem_v07.fits",GDname='gll_iem_v07',ISOfile="$(FERMI_DIR)/refdata/fermi/galdiffuse/iso_P8R3_SOURCE_V3_v1.txt",ISOname='iso_P8R3_SOURCE_V3_v1',normsOnly=False,extDir='',radLim=-1,maxRad=None,ExtraRad=10,sigFree=5,varFree=True,psForce=False,E2CAT=False,makeRegion=True,GIndexFree=False,wd='',oldNames=False):
 		self.radLim=(self.roi[2] if radLim<=0 else radLim)
 		self.maxRad=(self.radLim if maxRad==None else maxRad)
 		if self.maxRad<self.radLim:
@@ -55,9 +55,7 @@ class srcList:
 		self.sig=sigFree
 		self.reg=makeRegion
 		self.GIF=GIndexFree
-		if GRB:                    # By D.Tak
-			self.ER = 0
-			self.roi[2] = 0
+
 
 		if makeRegion:
 			rhold=self.out.split('.')[:-1]
@@ -67,7 +65,7 @@ class srcList:
 			for r in rhold:
 				self.regFile+=r
 			self.regFile+='.reg'
-		print('Creating file and adding sources from 4FGL')
+		#print('Creating file and adding sources from 4FGL')
 		#want ability to use either the FITS or xml versions of the catalog
 		#need to tweak FITS version to have new functionality and then work out xml version
 		if self.srcs.split('.')[-1]=='xml':
@@ -246,11 +244,11 @@ def addSrcsXML(sL,GD,GDn,ISO,ISOn,oldNames=False):
 	outfile.write(''.join(outStr))
 	outfile.close()
 	if not sL.psF:
-		print('Added %i point sources and %i extended sources'%(ptSrcNum,extSrcNum))
+		#print('Added %i point sources and %i extended sources'%(ptSrcNum,extSrcNum))
 		if extSrcNum>0:
 			print('If using unbinned likelihood you will need to rerun gtdiffrsp for the extended sources or rerun the makeModel function with optional argument psForce=True')
-	else:
-		print('Added %i point sources, note that any extended sources in ROI were modeled as point sources becaue psForce option was set to True'%ptSrcNum)
+	#else:
+	#	print('Added %i point sources, note that any extended sources in ROI were modeled as point sources becaue psForce option was set to True'%ptSrcNum)
 	if sL.reg:
 		BuildRegion(sL,Sources)
 	return
@@ -415,7 +413,7 @@ def addSrcsFITS(sL,GD,GDn,ISO,ISOn,oldNames):
 				model.write('\n')
 	file.close() #close file
 	if not sL.psF:
-		print('Added %i point sources and %i extended sources'%(ptSrcNum,extSrcNum))
+		#print('Added %i point sources and %i extended sources'%(ptSrcNum,extSrcNum))
 		if extSrcNum>0:
 			print('If using unbinned likelihood you will need to rerun gtdiffrsp for the extended sources or rerun the makeModel function with optional argument psForce=True')
 	else:

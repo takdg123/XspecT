@@ -1,3 +1,6 @@
+import matplotlib
+matplotlib.use('TkAgg')
+
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
@@ -6,11 +9,6 @@ import sys
 import glob
 
 from astropy.io import fits
-
-import gt_apps
-from gt_apps import *
-from GtApp import GtApp
-bindef = GtApp('gtbindef','Likelihood')
 
 from scipy.integrate import quad
 from datetime import datetime
@@ -22,71 +20,33 @@ from .info import EventInfo
 
 class Analysis(EventInfo):
 
-    def __init__(self, info=None, EvtInfo={}, verbose = False, only='GBMLAT', **kwargs):
-        self.verbose = verbose
-        if self.verbose == 2 or info==None:
-            print("config = {}")
-            print("config['Name']: e.g., '131108A'")
-            print("config['Trigger']: e.g., 405636118")
-            print("config['RA']: e.g., 156.50187")
-            print("config['DEC']: e.g., 9.66225")
-            print("config['T90']: [T05, T95]; e.g., [0.319986, 18.496286]")
-            print("config['usedGBM']: ['n0','n3','n6','n7','b0','b1']")
-            print("config['TimeEdge']: Time edges; e.g., [0, 1, 2, 3, 4, 5]")
-            print("config['TimeInterval']: Time intervals; e.g., [[0, 1], [1, 2], [2, 3]]")
-            print("config['TimeStart']: Start times; e.g., [0, 1, 2, 3, 4] ")
-            print("config['TimeEnd']: End times; e.g., [1, 2, 3, 4, 5] ")
-            print("Fitting = Analysis(grb, EvtInfo=config) or Fitting.Configuration(config)")
-            print("Fitting.RunFit(1,1)")
-            print("Fitting.PrintSED()")
-            print("Fitting.PrintResult()")
-            sys.exit()
-
-        if type(info) == str or type(info) == int:
-            super().__init__(str(info),  **kwargs)
-            self.Configuration(EvtInfo, only=only)
-        elif type(info) == dict:
-            info = {**info, **EvtInfo}
-            self.Configuration(info, only=only)
-
-    def Configuration(self, config, only='GBMLAT'):
-        keys = config.keys()
-        if "Name" in keys:          self.event_name = config['Name']
-        if "Trigger" in keys:       self.trigger = config['Trigger']
-        if "T90" in keys:           
-            self.t05 = config['T90'][0]
-            self.t95 = config['T90'][1]
-            self.t90 = config['T90'][1] - config['T90'][0]
-        if "RA" in keys:            self.refRa = config['RA']
-        if "DEC" in keys:           self.refDec = config['DEC']
-        if "usedGBM" in keys:       self.usedGBM = config['usedGBM']
-    
-        if 'redshift' in keys:      self.redshift = config['redshift']
-        if 'nH' in keys:            self._nH = config['nH']
-        
-        self._only = only
+    def __init__(self, info=None, EvtInfo={}, verbose = False, only='GBMLAT',  **kwargs):
+        super().__init__(info, EvtInfo={**EvtInfo, 'only': only}, **kwargs)
         self._usedData = self.__SelectedData__(self._only)        
+        self.verbose=verbose
+        
         self.__Reset__()
         if self.verbose:
             self.PrintTimeItv()
 
 
     def SetInit(self, m_num, init = {}, verbose=True):
-        try:
-            AllModels.addPyMod(bkn2power, bkn2powParInfo, 'add')
-            #AllModels.addPyMod(doublegrbm, doublegrbmInfo, 'add')
-            #AllModels.addPyMod(sbpl_gbm, sbpl_gbm_Info, 'add')
-            #AllModels.addPyMod(sbpl_smp, sbpl_smp_Info, 'add')
-            #AllModels.addPyMod(sbpl_granot, sbpl_granot_Info, 'add')
-            #AllModels.addPyMod(PowerLaw_piv, pl_pivInfo, 'add')
-            AllModels.addPyMod(multiBB, mBB_Info, 'add')
-        except:
-            pass
+        
+        AllModels.addPyMod(bkn2power, bkn2pow_Info, 'add')
+        #AllModels.addPyMod(doublegrbm, doublegrbmInfo, 'add')
+        AllModels.addPyMod(sbknpl, sbknpl_Info, 'add')
+        #AllModels.addPyMod(sbpl_smp, sbpl_smp_Info, 'add')
+        #AllModels.addPyMod(sbpl_granot, sbpl_granot_Info, 'add')
+        #AllModels.addPyMod(PowerLaw_piv, pl_pivInfo, 'add')
+        AllModels.addPyMod(multibb, multibb_Info, 'add')
+        AllModels.addPyMod(ssc, ssc_Info, 'add')
+    
         models = self.__RearrModel__(m_num)
         Model_Xspec = Model(models)
         parNum = 1
         for comp in Model_Xspec.componentNames:
             parameters = Model_Xspec.__getattribute__(comp)
+
             if len(init)==0: 
                 print(comp, parameters.parameterNames)
                 print(self._setP[m_num])
@@ -152,12 +112,11 @@ class Analysis(EventInfo):
         self.output = np.load(filename+".npy")
         self.data_points = np.load(filename+"_plot.npy")
 
-    def RunXspec(self, m_num = 0, ti_num = 0, only=None, newInit = False, paired = False, dataType = 1, rspType = True, BAT = False, XRT = False, debug = False, **kwargs):
+    def RunXspec(self, m_num = 0, ti_num = 0, only=None, paired = False, dataType = 1, rspType = True, BAT = False, XRT = False, debug = False, **kwargs):
         if self.verbose == 2:
             print("m_num: check PrintModels")
             print("ti_num: check PrintTimeItv")
             print("paired (boolen): If True, set [[m_num, ti_num], ...] = [[m, t], ...].")
-            print("newInit: update the initial parameters")
             print("rspType (boolen): use rsp2 file.")
             print("dataType (boolen)")
             sys.exit()
@@ -204,7 +163,7 @@ class Analysis(EventInfo):
         self.output = []
         self.data_points = []
         if self.verbose: 
-            print("="*75)
+            print("="*30+"   "+self.full_name+"   "+"="*30)
             print("{:^25} | {:^15} | {:^27}".format("Model","Time Intv","Status"))
             print("-"*75)
 
@@ -215,12 +174,16 @@ class Analysis(EventInfo):
             self._ti_num = ti_num
             if self.verbose and ti_num!=-1: 
                 print("{:^25} | {:>6.2f} - {:<6.2f} | {:^27}".format(self.model, self.toi[0], self.toi[1], 'Working'), end='\r')
-            output, data_points= self.__Fitting__(newInit, debug=debug, BAT=BAT, XRT=XRT, dataType=dataType, rspType=rspType)
+            output, data_points= self.__Fitting__(debug=debug, BAT=BAT, XRT=XRT, dataType=dataType, rspType=rspType)
             self.output.append(output)
             self.data_points.append(data_points)
             
             if self.verbose: 
-                print("{:^25} | {:>6.2f} - {:<6.2f} | {:^27}".format(self.model, self.toi[0], self.toi[1], 'Done'))
+                if self.fit_flag:
+                    status = "Done"
+                else:
+                    status = "Error"
+                print("{:^25} | {:>6.2f} - {:<6.2f} | {:^27}".format(self.model, self.toi[0], self.toi[1], status))
         self._current_output = self.output[-1]
         self._current_data_points = self.data_points[-1]
         
@@ -250,7 +213,7 @@ class Analysis(EventInfo):
             return Utilities.table.FitTable(self.__TableList__(), parlist=self._FparN)
 
     
-    def PrintSED(self, output_num = -1, lc_flag = False, save_flag = False, overlap=True, time_range = [], energy_range = [50, 300], verbose=False): 
+    def PrintSED(self, output_num = -1, group = {}, lc_flag = False, save_flag = False, overlap=True, time_range = [], energy_range = [50, 300], verbose=False): 
         if np.size(self.output) == 1:
             self._current_output = self.output[0]
             self.__MakeSED__(lc_flag = lc_flag, save_flag = save_flag, time_range=time_range, energy_range=energy_range, overlap=overlap, verbose=verbose)
@@ -414,9 +377,10 @@ class Analysis(EventInfo):
         self._newP = newP
 
 
-    def __Fitting__(self, newInit, debug=False, BAT=False, XRT=False, dataType=1, rspType=True):    
+    def __Fitting__(self, debug=False, BAT=False, XRT=False, dataType=1, rspType=True):    
         from xspec import AllData, AllModels, Xset, Model, Fit, Plot
         
+        self._current_output = {}
         AllData.clear()
         AllModels.clear()
         Xset.allowPrompting=False
@@ -429,7 +393,9 @@ class Analysis(EventInfo):
         self._dof = 0
         
         AllModels.addPyMod(Utilities.functions.bkn2power, Utilities.functions.bkn2pow_Info, 'add')
-        AllModels.addPyMod(Utilities.functions.multiBB, Utilities.functions.multiBB_Info, 'add')
+        AllModels.addPyMod(Utilities.functions.multibb, Utilities.functions.multibb_Info, 'add')
+        AllModels.addPyMod(Utilities.functions.sbknpl, Utilities.functions.sbknpl_Info, 'add')
+        AllModels.addPyMod(Utilities.functions.ssc, Utilities.functions.ssc_Info, 'add')
          
         self._usedData = self.__SelectedData__(self._only)
         
@@ -437,9 +403,11 @@ class Analysis(EventInfo):
 
         if 'LAT' in self._usedData: self.__PrepLAT__(dataType=dataType)
         
+        if XRT: self.__PrepXRT__()
+
         if BAT: self.__PrepBAT__()
 
-        if XRT: self.__PrepXRT__()
+        
 
 
         self._usedData = self.__SelectedData__(self._only, BAT=BAT, XRT=XRT)
@@ -451,15 +419,16 @@ class Analysis(EventInfo):
             models = models+'* TBabs * zTBabs'
 
         # Input the model to Xspec
-        if newInit and len(self._newP)>0:
+        if len(self._newP)>0:
             changedInitP = np.asarray(self._newP)
-            if m_num in changedInitP[:,0]:
+            if self._m_num in changedInitP[:,0]:
                 paramSET = changedInitP[:,1][changedInitP[:,0] == self._m_num][0]
                 
             else:
                 paramSET = self._setP[self._m_num]
         else:
             paramSET = self._setP[self._m_num]
+
 
         Mmanager=Model(models, setPars=paramSET) 
 
@@ -512,8 +481,8 @@ class Analysis(EventInfo):
         
         if self._only == 'Swiftonly':
             if XRT and BAT:
-                Fit.statMethod = "chi 1"
-                Fit.statMethod = "cstat 2"
+                Fit.statMethod = "cstat 1"
+                Fit.statMethod = "chi 2"
             elif BAT:
                 Fit.statMethod = "chi"
             else:
@@ -521,8 +490,8 @@ class Analysis(EventInfo):
         else:
             if XRT and BAT:
                 Fit.statMethod = "pgstat"
-                Fit.statMethod = "chi {}".format(int(self._data_num-2))
-                Fit.statMethod = "cstat {}".format(int(self._data_num-1))
+                Fit.statMethod = "cstat {}".format(int(self._data_num-2))
+                Fit.statMethod = "chi {}".format(int(self._data_num-1))
             elif BAT:
                 Fit.statMethod = "pgstat"
                 Fit.statMethod = "chi {}".format(int(self._data_num-1))
@@ -532,10 +501,12 @@ class Analysis(EventInfo):
             else:
                 Fit.statMethod = "pgstat"
         
-        Fit.nIterations = 10000
-
+        Fit.nIterations = 1000
+        Fit.query = "no"
+        
         Fit.perform()
-    
+        self.fit_flag=True
+        
         Xset.parallel.error = Mmanager.nParameters
         
         errPar = ''
@@ -545,8 +516,6 @@ class Analysis(EventInfo):
     
         for i in range(Mmanager.nParameters):
             Fit.error('1.0 {}'.format(i+1))
-
-        x, y, m = self.__PlotSetting__(debug = debug, BAT=BAT, XRT=XRT)
         
         self._Mmanager = Mmanager
         self._Fit = Fit
@@ -556,12 +525,15 @@ class Analysis(EventInfo):
     
         bic= Fit.statistic + k*np.log(n)
 
-        Statistic = [Fit.statistic, Fit.dof, bic]
-
-        output = {"Model":self.__FitResult__(), "TimeInterval":self.toi, "Statistics":Statistic, "Covariance":Fit.covariance}
+        self._current_output["TimeInterval"] = self.toi
+        self._current_output["Model"] = self.__FitResult__()
+        self._current_output["Statistics"] = [Fit.statistic, Fit.dof, bic]
+        self._current_output["Covariance"] = Fit.covariance
+        x, y, m = self.__PlotSetting__(debug = debug, BAT=BAT, XRT=XRT)
+        
         dataPoints = {"TimeInterval":self.toi, "PlotX":x, "PlotY":y, "PlotModel": m}
 
-        return output, dataPoints
+        return self._current_output, dataPoints
             
     def __PrepGBMLLE__(self, dataType=1, rspType = True):
 
@@ -619,10 +591,14 @@ class Analysis(EventInfo):
             else: 
                 self.__IgnoreChan__(det)
                 self._AllData(self._data_num).ignore("30.-40.")
-
+                if self.full_name == '190114873':
+                    self._AllData(self._data_num).ignore("**-50.")
+                if self.full_name == '211018936' and self._data_num == 1:
+                    self._AllData(1).ignore("700.0-**")
             
             self._dof+=len(self._AllData(self._data_num).energies)
             self._group_num.append([det, self._data_num])
+
             self._data_num+=1
             
     
@@ -668,26 +644,18 @@ class Analysis(EventInfo):
         self._dof+=len(self._AllData(self._data_num).energies)
         self._group_num.append(["LAT", self._data_num])
         self._data_num+=1
-    '''
+
     def __PrepXRT__(self):
 
         # Import XRT dataset
 
-        os.chdir("./XRT/")
-        if ti_num == 7: txrt = 1
-        elif ti_num == 8: txrt = 2
-        elif ti_num == 9: txrt = 3
-        elif ti_num == 10: txrt = 4
-        elif ti_num == 11: txrt = 'Ma5'
-        elif ti_num == 12: txrt = '1_2'
+        os.chdir("./{}/XRT/".format(self.full_name))
+        txrt = self._ti_num+1
 
-        if ti_num == 11:
-            self._AllData('{}:{} 77to180wt.pi'.format(self._data_num, self._data_num))
+        if self._data_num == 1:
+            self._AllData('sw00883832000xwtw2po_gti{}_g0_gr1.pi'.format(txrt))
         else:
-            if self._data_num == 1:
-                self._AllData('sw00883832000xwtw2po_gti{}_g0_gr1.pi'.format(txrt))
-            else:
-                self._AllData('{}:{} sw00883832000xwtw2po_gti{}_g0_gr1.pi'.format(self._data_num, self._data_num, txrt))
+            self._AllData('{}:{} sw00883832000xwtw2po_gti{}_g0_gr1.pi'.format(self._data_num, self._data_num, txrt))
 
         if hasattr(self, 'energy_range'):
             energy_range = self.energy_range
@@ -695,24 +663,23 @@ class Analysis(EventInfo):
             self._AllData(self._data_num).ignore("{:.1f}-**".format(energy_range[1]))
             #self._AllData(self._data_num).ignore("1-{} {}-{}".format(len(np.asarray(AllData(self._data_num).energies)[:,0])-sum(np.asarray(AllData(self._data_num).energies)[:,0]>energy_range[0]), sum(np.asarray(AllData(self._data_num).energies)[:,0]<energy_range[1])+1, len(np.asarray(AllData(self._data_num).energies)[:,0])))
         else:
-            self._AllData(self._data_num).ignore("**-1.")
+            self._AllData(self._data_num).ignore("**-0.75")
             self._AllData(self._data_num).ignore("10.-**")
 
-        os.chdir("../")
+        os.chdir("../../")
         self._dof+=len(self._AllData(self._data_num).energies)
         self._group_num.append(["XRT", self._data_num])
         self._data_num+=1
 
-
-    def __PrepBAT__(self, ti_num):
+    def __PrepBAT__(self):
 
         # Import BAT dataset
 
         if self._data_num == 1:
-            self._AllData('./BAT/{}-{}-{}.pha'.format(self.event_name, 'BAT', ti_num))
+            self._AllData('./{}/BAT/{}-{}-{}.pha'.format(self.full_name, self.event_name, 'BAT', self._ti_num))
         else:
-            self._AllData('{}:{} ./BAT/{}-{}-{}.pha'.format(self._data_num, self._data_num,self.event_name, 'BAT', ti_num))
-        self._AllData(self._data_num).response = './BAT/{}-{}-{}.rsp'.format(self.event_name, 'BAT', ti_num)
+            self._AllData('{}:{} ./{}/BAT/{}-{}-{}.pha'.format(self._data_num, self._data_num, self.full_name, self.event_name, 'BAT', self._ti_num))
+        self._AllData(self._data_num).response = './{}/BAT/{}-{}-{}.rsp'.format(self.full_name, self.event_name, 'BAT', self._ti_num)
         
         if hasattr(self, 'energy_range'):
             energy_range = self.energy_range
@@ -724,7 +691,7 @@ class Analysis(EventInfo):
         self._dof+=len(self._AllData(self._data_num).energies)
         self._group_num.append(["BAT", self._data_num])
         self._data_num+=1
-    '''    
+        
     def __IgnoreChan__(self, det):
 
         if hasattr(self, 'energy_range'):
@@ -747,7 +714,7 @@ class Analysis(EventInfo):
             elif det == 'LLE':
                 energy_range = [30000.0, 100000.0]
             else:
-                energy_range = [10.0, 900.0]
+                energy_range = [10.0, 890.0]
 
         self._AllData(self._data_num).ignore("**-{:.1f}".format(energy_range[0]))
         self._AllData(self._data_num).ignore("{:.1f}-**".format(energy_range[1]))
@@ -785,11 +752,13 @@ class Analysis(EventInfo):
         Plot.yLog = True
         Plot.device = "/xs"
         Plot.xAxis="keV"
-        #Plot('data', "eemodel")
+        
         
         for det, groupN in self._group_num:
-            if 'n' in det or 'b' in det:
-                Plot.setRebin(1, 1, groupNum="{}".format(groupN))
+            if 'n' in det:
+                Plot.setRebin(5, 10, groupNum="{}".format(groupN))
+            if 'b' in det:
+                Plot.setRebin(5, 20, groupNum="{}".format(groupN))
             elif det == 'XRT':
                 Plot.setRebin(10, 100, groupNum="{}".format(groupN))
             elif det == 'BAT':
@@ -798,36 +767,36 @@ class Analysis(EventInfo):
             #    Plot.setRebin(1.5, 10, groupNum="{}".format(groupN))
         
 
-        if not(BAT) and not(XRT):
-            Plot('eeufspec', "delchi")
-            #Plot.addCommand("la y \gn F\d\gn\u (keV cm\u-2\d s\u-1\d)")
-            Plot.addCommand("wind 2")
-            #Plot.addCommand("la y ratio")
-            Plot.addCommand("rescale y -5 5")
-            Plot.addCommand("LIne OFf")
-            Plot.addCommand("Uncertainty y ON")
-            Plot.addCommand("Error y ON")
-            Plot.iplot()
-        else:
-            Plot('data', 'residuals')
-            Plot.iplot()
+        #if not(BAT) and not(XRT):
+        Plot('eeufspec')
+
+        #Plot.addCommand("la y \gn F\d\gn\u (keV cm\u-2\d s\u-1\d)")
+        #Plot.addCommand("wind 2")
+        #Plot.addCommand("la y ratio")
+        #Plot.addCommand("rescale y -5 5")
+        #Plot.addCommand("LIne OFf")
+        #Plot.addCommand("Uncertainty y ON")
+        #Plot.addCommand("Error y ON")
+        Plot.iplot()
+        #else:
+        #    Plot('data', 'residuals')
+        #    Plot.iplot()
         
         self._Plot = Plot
         x = []
         y = []
         m = []
-        
-        #if not(BAT):
-        if True:
-            
-            for i in range(1,np.size(self._usedData)+1):
-                x += [[median, sigma] for median, sigma in zip(Plot.x(plotGroup=i), Plot.xErr(plotGroup=i))]
-                y += [[median, sigma] for median, sigma in zip(Plot.y(plotGroup=i), Plot.yErr(plotGroup=i))]
-                m += [value for value in Plot.model(plotGroup=i)]
 
-            x = np.asarray(x)
-            y = np.asarray(y)
-            m = np.asarray(m)
+        for i in range(1,np.size(self._usedData)+1):
+                    
+            x += [[median, sigma, i] for median, sigma in zip(Plot.x(plotGroup=i), Plot.xErr(plotGroup=i))]
+            y += [[median, sigma, i] for median, sigma in zip(Plot.y(plotGroup=i), Plot.yErr(plotGroup=i))]
+            m += [value for value in Plot.model(plotGroup=i)]
+
+
+        x = np.asarray(x)
+        y = np.asarray(y)
+        m = np.asarray(m)
         
         return x, y, m
     
@@ -920,14 +889,14 @@ class Analysis(EventInfo):
         return [np.percentile(Ep2, 50), np.percentile(Ep2, 84),np.percentile(Ep2, 16)]
 
 
-    def __MakeSED__(self, lc_flag = False, save_flag = False, time_range = [], energy_range = [50, 300], overlap=True, verbose=False):
+    def __MakeSED__(self, lc_flag = False,  save_flag = False, time_range = [], energy_range = [50, 300], overlap=True, verbose=False):
         if not(lc_flag):
             fig = plt.figure(figsize=(5,6))
             gs = plt.GridSpec(2, 1, height_ratios=[3, 12])
             gs.update(hspace=0.32)
             topax = fig.add_subplot(gs[0])
 
-            topax = Utilities.lightcurve.LightCurve(self, ax = topax, toi=self.toi+self.trigger)
+            topax = Utilities.lightcurve.LightCurve(self, ext_ax = topax, toi=self.toi, sed_fig=True)
             
             gs_base = gridspec.GridSpecFromSubplotSpec(2, 1, subplot_spec=gs[1], height_ratios=[9, 2], hspace=0.05)
             ax = [fig.add_subplot(gs_base[0,:]),fig.add_subplot(gs_base[1,:])]
@@ -951,7 +920,8 @@ class Analysis(EventInfo):
         #    ratio = np.sign(y[:,0]-m)*abs(np.asarray(y[:,0]-m)/abs(y[:,1]))
         #    ratio_err = np.zeros(len(x[:,0]))+1
 
-        if overlap: ax[0].errorbar(x[:,0], y[:,0], xerr=x[:,1], yerr=y[:,1], fmt='', ls='', c='gray', elinewidth=1)
+        if overlap: 
+            ax[0].errorbar(x[:,0], y[:,0], xerr=x[:,1], yerr=y[:,1], fmt='', ls='', c='gray', elinewidth=1)
         ax[1].errorbar(x[:,0], ratio, yerr=ratio_err, xerr=x[:,1], fmt='', ls='', c='gray', elinewidth=1)
 
         if 'XRT' in self._usedData:
@@ -998,6 +968,7 @@ class Analysis(EventInfo):
         parSet = self.__GeneratePars__(sim=butterfly)
 
         synF = []
+        const = 1
         
         if XRT:
             parSet = [[x, y] for x, y in zip(parSet[:,0], parSet[:,1])]
@@ -1008,7 +979,7 @@ class Analysis(EventInfo):
             parNum = 0
             for fresult in self._current_output['Model']:
                 model_name = fresult['name']
-                if model_name =='TBabs' or model_name == 'zTBabs': continue
+                if model_name =='TBabs' or model_name == 'zTBabs' or model_name =='constant': continue
 
                 func = globals()[model_name.upper()]
                 thisParNum = func.__code__.co_argcount-1
